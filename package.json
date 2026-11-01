@@ -1,0 +1,38 @@
+{
+  "name": "map-bearing-card",
+  "version": "1.0.0",
+  "description": "Home Assistant Lovelace card displaying a map with a vehicle rotated to its heading/bearing",
+  "main": "dist/map-bearing-card.js",
+  "module": "dist/map-bearing-card.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "home-assistant",
+    "lovelace",
+    "custom-card",
+    "hacs",
+    "map",
+    "bearing",
+    "heading",
+    "vehicle",
+    "car",
+    "tracker"
+  ],
+  "author": "nicks-technik",
+  "license": "MIT",
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "lit": "^3.2.1"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.16",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0",
+    "vitest": "^3.0.7"
+  }
+}

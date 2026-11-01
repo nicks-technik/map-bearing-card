@@ -1,0 +1,847 @@
+import { LitElement, html, css, PropertyValues, unsafeCSS } from 'lit';
+import { property, state } from 'lit/decorators.js';
+import * as L from 'leaflet';
+import leafletCss from 'leaflet/dist/leaflet.css?inline';
+
+import {
+  HomeAssistant,
+  MapBearingCardConfig,
+  VehicleState,
+  ZoneData,
+} from './types';
+import { DEFAULT_CONFIG, TILE_LAYERS, TileLayerDef, CARD_TAG } from './const';
+import { buildVehicleState, extractZones } from './utils/entity';
+import { unwrapAngle, formatBearingDisplay } from './utils/bearing';
+import { getVehicleSvg, renderDirectionalBeam } from './vehicles/svgs';
+
+export class MapBearingCard extends LitElement {
+  @property({ attribute: false }) public hass!: HomeAssistant;
+  @state() private _config!: MapBearingCardConfig;
+  @state() private _vehicleState: VehicleState | null = null;
+  @state() private _isFollowing: boolean = true;
+  @state() private _hasValidCoords: boolean = false;
+  @state() private _currentThemeDark: boolean = false;
+
+  private _map: L.Map | null = null;
+  private _vehicleMarker: L.Marker | null = null;
+  private _accuracyCircle: L.Circle | null = null;
+  private _trailPolyline: L.Polyline | null = null;
+  private _zoneLayers: L.LayerGroup = new L.LayerGroup();
+  private _tileLayer: L.TileLayer | null = null;
+  private _currentTileKey: string = '';
+
+  private _lastRotatedAngle: number = 0;
+  private _trailPoints: [number, number][] = [];
+  private _previousPos: { lat: number; lon: number } | null = null;
+  private _resizeObserver: ResizeObserver | null = null;
+
+  static getStubConfig(hass: HomeAssistant): Partial<MapBearingCardConfig> {
+    const defaultTracker = Object.keys(hass.states).find(
+      (eid) => eid.startsWith('device_tracker.') || eid.startsWith('sensor.')
+    );
+    return {
+      type: `custom:${CARD_TAG}`,
+      entity: defaultTracker || 'device_tracker.my_car',
+      title: 'Vehicle Tracker',
+      vehicle_type: 'car',
+      vehicle_color: '#1e88e5',
+      show_bearing_cone: true,
+      show_accuracy: true,
+      show_hud: true,
+      default_zoom: 16,
+    };
+  }
+
+  public static async getConfigElement(): Promise<HTMLElement> {
+    await import('./map-bearing-card-editor');
+    return document.createElement('map-bearing-card-editor');
+  }
+
+  public setConfig(config: MapBearingCardConfig): void {
+    if (!config.entity) {
+      throw new Error('Please define an entity (e.g. device_tracker or sensor) in the card configuration.');
+    }
+
+    this._config = {
+      ...DEFAULT_CONFIG,
+      ...config,
+    };
+  }
+
+  public connectedCallback(): void {
+    super.connectedCallback();
+    if (this._map) {
+      requestAnimationFrame(() => this._map?.invalidateSize());
+    }
+  }
+
+  public disconnectedCallback(): void {
+    super.disconnectedCallback();
+    if (this._resizeObserver) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
+    }
+    if (this._map) {
+      this._map.remove();
+      this._map = null;
+    }
+  }
+
+  protected firstUpdated(): void {
+    this._initMap();
+    this._setupResizeObserver();
+  }
+
+  protected updated(changedProperties: PropertyValues): void {
+    super.updated(changedProperties);
+
+    if (changedProperties.has('hass') && this.hass && this._config) {
+      this._updateVehicleFromHass();
+      this._checkThemeChange();
+    }
+
+    if (changedProperties.has('_config') && this._config && this._map) {
+      this._updateTileLayer();
+    }
+  }
+
+  private _setupResizeObserver(): void {
+    const container = this.shadowRoot?.querySelector('#map-container') as HTMLElement;
+    if (container && window.ResizeObserver) {
+      this._resizeObserver = new ResizeObserver(() => {
+        if (this._map) {
+          this._map.invalidateSize();
+        }
+      });
+      this._resizeObserver.observe(container);
+    }
+  }
+
+  private _isDarkMode(): boolean {
+    if (this._config.dark_mode === true) return true;
+    if (this._config.dark_mode === false) return false;
+    // auto detect from Home Assistant
+    if (this.hass?.themes?.darkMode !== undefined) {
+      return !!this.hass.themes.darkMode;
+    }
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+
+  private _checkThemeChange(): void {
+    const isDark = this._isDarkMode();
+    if (isDark !== this._currentThemeDark) {
+      this._currentThemeDark = isDark;
+      if (this._config.map_provider === 'auto' || !this._config.map_provider) {
+        this._updateTileLayer();
+      }
+    }
+  }
+
+  private _initMap(): void {
+    const mapEl = this.shadowRoot?.querySelector('#map') as HTMLElement;
+    if (!mapEl || this._map) return;
+
+    const initialZoom = this._config.default_zoom || 16;
+    const minZoom = this._config.min_zoom || 3;
+    const maxZoom = this._config.max_zoom || 19;
+
+    this._map = L.map(mapEl, {
+      zoomControl: false,
+      attributionControl: false,
+      minZoom,
+      maxZoom,
+    });
+
+    // Add zoom control at bottom-right
+    L.control.zoom({ position: 'bottomright' }).addTo(this._map);
+
+    // Add attribution at bottom-left in subtle style
+    L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(this._map);
+
+    this._updateTileLayer();
+    this._zoneLayers.addTo(this._map);
+
+    // Map drag listener to disable auto-following
+    this._map.on('dragstart', () => {
+      this._isFollowing = false;
+    });
+
+    // If we already have vehicle coords, center map
+    if (this._vehicleState && this._vehicleState.latitude !== null && this._vehicleState.longitude !== null) {
+      this._map.setView(
+        [this._vehicleState.latitude, this._vehicleState.longitude],
+        initialZoom
+      );
+    } else {
+      // Default to neutral center until location received
+      this._map.setView([51.505, -0.09], initialZoom);
+    }
+
+    // Trigger size update once DOM layout settles
+    requestAnimationFrame(() => {
+      this._map?.invalidateSize();
+      this._renderMapElements();
+    });
+  }
+
+  private _updateTileLayer(): void {
+    if (!this._map) return;
+
+    let provider = this._config.map_provider || 'auto';
+    let tileDef: TileLayerDef;
+
+    if (provider === 'auto') {
+      const dark = this._isDarkMode();
+      tileDef = dark ? TILE_LAYERS.carto_dark : TILE_LAYERS.carto_light;
+    } else if (provider === 'custom' && this._config.tile_url) {
+      tileDef = {
+        url: this._config.tile_url,
+        attribution: this._config.tile_attribution || '',
+      };
+    } else {
+      tileDef = TILE_LAYERS[provider] || TILE_LAYERS.carto_light;
+    }
+
+    const tileKey = `${provider}-${tileDef.url}`;
+    if (this._tileLayer && this._currentTileKey === tileKey) {
+      return;
+    }
+
+    if (this._tileLayer) {
+      this._map.removeLayer(this._tileLayer);
+    }
+
+    this._tileLayer = L.tileLayer(tileDef.url, {
+      attribution: tileDef.attribution,
+      subdomains: tileDef.subdomains || ['abc'],
+      maxZoom: tileDef.maxZoom || 19,
+    }).addTo(this._map);
+
+    this._currentTileKey = tileKey;
+  }
+
+  private _updateVehicleFromHass(): void {
+    const prevState = this._vehicleState;
+    const newState = buildVehicleState(this.hass, this._config, this._previousPos);
+    this._vehicleState = newState;
+
+    const hasCoords = newState.latitude !== null && newState.longitude !== null;
+    this._hasValidCoords = hasCoords;
+
+    if (hasCoords) {
+      this._previousPos = { lat: newState.latitude!, lon: newState.longitude! };
+
+      // Update history trail points
+      if (this._config.history_trail?.enabled) {
+        const maxPoints = this._config.history_trail.max_points || 100;
+        const lastPoint = this._trailPoints[this._trailPoints.length - 1];
+        if (!lastPoint || lastPoint[0] !== newState.latitude || lastPoint[1] !== newState.longitude) {
+          this._trailPoints.push([newState.latitude!, newState.longitude!]);
+          if (this._trailPoints.length > maxPoints) {
+            this._trailPoints.shift();
+          }
+        }
+      }
+
+      this._renderMapElements();
+
+      // Recenter or follow vehicle if enabled
+      if (this._isFollowing && this._config.follow_vehicle !== false && this._map) {
+        this._map.panTo([newState.latitude!, newState.longitude!], {
+          animate: true,
+          duration: 0.75,
+        });
+      }
+    }
+  }
+
+  private _renderMapElements(): void {
+    if (!this._map || !this._vehicleState || !this._hasValidCoords) return;
+
+    const { latitude, longitude, bearing, accuracy } = this._vehicleState;
+    if (latitude === null || longitude === null) return;
+
+    const latLng = L.latLng(latitude, longitude);
+    const vehicleColor = this._config.vehicle_color || '#1e88e5';
+    const vehicleSize = this._config.vehicle_size || 46;
+    const showCone = this._config.show_bearing_cone !== false;
+
+    // Calculate smooth continuous angle
+    const targetBearing = bearing ?? 0;
+    const smoothAngle = unwrapAngle(targetBearing, this._lastRotatedAngle);
+    this._lastRotatedAngle = smoothAngle;
+
+    // Build vehicle HTML with rotation wrapper and optional beam
+    const vehicleSvg = getVehicleSvg(
+      this._config.vehicle_type,
+      vehicleColor,
+      this._config.vehicle_image
+    );
+    const coneHtml = showCone
+      ? renderDirectionalBeam(this._config.cone_color || vehicleColor, 0.4)
+      : '';
+
+    const iconHtml = `
+      <div class="map-bearing-vehicle-wrapper" style="width: ${vehicleSize}px; height: ${vehicleSize}px;">
+        <div class="vehicle-bearing-rotator" style="transform: rotate(${smoothAngle}deg);">
+          ${coneHtml}
+          <div class="vehicle-icon-inner" style="width: 100%; height: 100%;">
+            ${vehicleSvg}
+          </div>
+        </div>
+      </div>
+    `;
+
+    const customDivIcon = L.divIcon({
+      className: 'map-bearing-custom-div-icon',
+      html: iconHtml,
+      iconSize: [vehicleSize, vehicleSize],
+      iconAnchor: [vehicleSize / 2, vehicleSize / 2],
+    });
+
+    if (!this._vehicleMarker) {
+      this._vehicleMarker = L.marker(latLng, {
+        icon: customDivIcon,
+        zIndexOffset: 1000,
+      }).addTo(this._map);
+
+      this._vehicleMarker.on('click', () => this._handleEntityClick());
+    } else {
+      this._vehicleMarker.setLatLng(latLng);
+      this._vehicleMarker.setIcon(customDivIcon);
+    }
+
+    // Render GPS Accuracy Circle
+    if (this._config.show_accuracy !== false && accuracy !== null && accuracy > 0) {
+      if (!this._accuracyCircle) {
+        this._accuracyCircle = L.circle(latLng, {
+          radius: accuracy,
+          color: vehicleColor,
+          weight: 1.5,
+          opacity: 0.6,
+          fillColor: vehicleColor,
+          fillOpacity: 0.1,
+          dashArray: '4, 4',
+        }).addTo(this._map);
+      } else {
+        this._accuracyCircle.setLatLng(latLng);
+        this._accuracyCircle.setRadius(accuracy);
+        this._accuracyCircle.setStyle({ color: vehicleColor, fillColor: vehicleColor });
+      }
+    } else if (this._accuracyCircle) {
+      this._map.removeLayer(this._accuracyCircle);
+      this._accuracyCircle = null;
+    }
+
+    // Render History Trail
+    if (this._config.history_trail?.enabled && this._trailPoints.length > 1) {
+      const trailColor = this._config.history_trail.trail_color || vehicleColor;
+      const trailWidth = this._config.history_trail.trail_width || 3;
+      if (!this._trailPolyline) {
+        this._trailPolyline = L.polyline(this._trailPoints, {
+          color: trailColor,
+          weight: trailWidth,
+          opacity: 0.75,
+          dashArray: '6, 6',
+        }).addTo(this._map);
+      } else {
+        this._trailPolyline.setLatLngs(this._trailPoints);
+        this._trailPolyline.setStyle({ color: trailColor, weight: trailWidth });
+      }
+    }
+
+    // Render Home Assistant Zones
+    if (this._config.show_zones !== false) {
+      this._renderZones();
+    }
+  }
+
+  private _renderZones(): void {
+    if (!this._map || !this.hass) return;
+    this._zoneLayers.clearLayers();
+
+    const zones = extractZones(this.hass);
+    for (const z of zones) {
+      if (z.passive) continue; // skip passive zones if desired
+      const circle = L.circle([z.latitude, z.longitude], {
+        radius: z.radius,
+        color: '#0284c7',
+        fillColor: '#38bdf8',
+        fillOpacity: 0.15,
+        weight: 1.5,
+        dashArray: '3, 4',
+      });
+      circle.bindTooltip(z.name, {
+        permanent: false,
+        direction: 'top',
+        className: 'zone-tooltip',
+      });
+      this._zoneLayers.addLayer(circle);
+    }
+  }
+
+  private _handleRecenter(): void {
+    this._isFollowing = true;
+    if (this._map && this._vehicleState && this._vehicleState.latitude !== null && this._vehicleState.longitude !== null) {
+      const zoom = this._config.default_zoom || 16;
+      this._map.setView(
+        [this._vehicleState.latitude, this._vehicleState.longitude],
+        zoom,
+        { animate: true, duration: 0.6 }
+      );
+    }
+  }
+
+  private _handleEntityClick(): void {
+    const entityId = this._config.entity;
+    if (!entityId) return;
+
+    const event = new CustomEvent('hass-more-info', {
+      bubbles: true,
+      composed: true,
+      detail: { entityId },
+    });
+    this.dispatchEvent(event);
+  }
+
+  protected render() {
+    if (!this._config) {
+      return html`<ha-card><div class="card-warning">Card not configured</div></ha-card>`;
+    }
+
+    const height = typeof this._config.card_height === 'number'
+      ? `${this._config.card_height}px`
+      : this._config.card_height || '380px';
+
+    const vs = this._vehicleState;
+    const showHud = this._config.show_hud !== false;
+    const hasBearing = vs?.bearing !== null && vs?.bearing !== undefined;
+    const hasSpeed = vs?.speed !== null;
+    const hasBattery = vs?.battery !== null;
+
+    return html`
+      <ha-card class="map-bearing-card">
+        <div id="map-container" style="height: ${height};">
+          <div id="map"></div>
+
+          ${!this._hasValidCoords
+            ? html`
+                <div class="no-gps-overlay">
+                  <div class="no-gps-box">
+                    <svg class="no-gps-icon" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    <div class="no-gps-title">Waiting for GPS location</div>
+                    <div class="no-gps-subtitle">${this._config.entity}</div>
+                  </div>
+                </div>
+              `
+            : ''}
+
+          ${showHud && vs
+            ? html`
+                <!-- Top HUD Bar: Vehicle Name, State, Battery -->
+                <div class="hud-top-bar" @click=${this._handleEntityClick}>
+                  <div class="hud-title-wrap">
+                    <span class="hud-entity-name">${vs.name}</span>
+                    <span class="hud-state-badge ${vs.isMoving ? 'moving' : ''}">${vs.stateText}</span>
+                  </div>
+
+                  <div class="hud-metrics-wrap">
+                    ${this._config.show_speed !== false && hasSpeed
+                      ? html`
+                          <div class="hud-badge speed-badge">
+                            <svg class="hud-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                              <circle cx="12" cy="12" r="10"/>
+                              <path d="M12 6v6l4 2"/>
+                            </svg>
+                            <span>${vs.speed}</span>
+                          </div>
+                        `
+                      : ''}
+
+                    ${this._config.show_battery !== false && hasBattery
+                      ? html`
+                          <div class="hud-badge battery-badge">
+                            <svg class="hud-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                              <rect x="2" y="7" width="16" height="10" rx="2" ry="2"/>
+                              <line x1="22" y1="11" x2="22" y2="13"/>
+                            </svg>
+                            <span>${vs.battery}%</span>
+                          </div>
+                        `
+                      : ''}
+                  </div>
+                </div>
+
+                <!-- Bottom HUD Bar: Compass/Bearing & Recenter Button -->
+                <div class="hud-bottom-bar">
+                  ${this._config.show_bearing !== false && hasBearing
+                    ? html`
+                        <div class="hud-compass-chip">
+                          <svg
+                            class="compass-needle-icon"
+                            viewBox="0 0 24 24"
+                            width="16"
+                            height="16"
+                            style="transform: rotate(${vs.bearing}deg);"
+                          >
+                            <polygon points="12,2 17,21 12,17 7,21" fill="#ef4444" />
+                          </svg>
+                          <span class="compass-text">${formatBearingDisplay(vs.bearing)}</span>
+                        </div>
+                      `
+                    : html`<div></div>`}
+
+                  <div class="hud-controls">
+                    ${this._config.recenter_button !== false && !this._isFollowing
+                      ? html`
+                          <button
+                            class="recenter-btn"
+                            @click=${this._handleRecenter}
+                            title="Re-center on vehicle"
+                          >
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                              <circle cx="12" cy="12" r="9"/>
+                              <circle cx="12" cy="12" r="3"/>
+                              <line x1="12" y1="1" x2="12" y2="5"/>
+                              <line x1="12" y1="19" x2="12" y2="23"/>
+                              <line x1="1" y1="12" x2="5" y2="12"/>
+                              <line x1="19" y1="12" x2="23" y2="12"/>
+                            </svg>
+                            <span>Recenter</span>
+                          </button>
+                        `
+                      : ''}
+
+                    ${this._config.show_last_updated !== false && vs.lastUpdated
+                      ? html`
+                          <div class="last-updated-chip">
+                            ${vs.lastUpdated}
+                          </div>
+                        `
+                      : ''}
+                  </div>
+                </div>
+              `
+            : ''}
+        </div>
+      </ha-card>
+    `;
+  }
+
+  static styles = [
+    unsafeCSS(leafletCss),
+    css`
+      :host {
+        display: block;
+        --card-radius: var(--ha-card-border-radius, 12px);
+        --primary-color: var(--primary-color, #1e88e5);
+      }
+
+      ha-card {
+        overflow: hidden;
+        position: relative;
+        border-radius: var(--card-radius);
+      }
+
+      #map-container {
+        position: relative;
+        width: 100%;
+        background-color: var(--primary-background-color, #111827);
+      }
+
+      #map {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 1;
+      }
+
+      /* Vehicle Marker Styles */
+      .map-bearing-custom-div-icon {
+        background: transparent !important;
+        border: none !important;
+        overflow: visible !important;
+      }
+
+      .map-bearing-vehicle-wrapper {
+        position: relative;
+        overflow: visible;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .vehicle-bearing-rotator {
+        width: 100%;
+        height: 100%;
+        transform-origin: center center;
+        transition: transform 0.45s cubic-bezier(0.25, 1, 0.5, 1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      }
+
+      .vehicle-icon-inner {
+        position: relative;
+        z-index: 2;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* No GPS overlay */
+      .no-gps-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 500;
+        background: rgba(15, 23, 42, 0.75);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .no-gps-box {
+        text-align: center;
+        color: #f8fafc;
+        padding: 24px 32px;
+        background: rgba(30, 41, 59, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 12px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      }
+
+      .no-gps-icon {
+        stroke: #f59e0b;
+        margin-bottom: 8px;
+      }
+
+      .no-gps-title {
+        font-weight: 600;
+        font-size: 16px;
+      }
+
+      .no-gps-subtitle {
+        font-size: 13px;
+        color: #94a3b8;
+        margin-top: 4px;
+        font-family: monospace;
+      }
+
+      /* Top HUD Bar */
+      .hud-top-bar {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        right: 12px;
+        z-index: 400;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        pointer-events: none;
+      }
+
+      .hud-title-wrap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(15, 23, 42, 0.78);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        padding: 6px 12px;
+        border-radius: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        pointer-events: auto;
+        cursor: pointer;
+        transition: transform 0.15s ease, background-color 0.15s ease;
+      }
+
+      .hud-title-wrap:hover {
+        background: rgba(15, 23, 42, 0.92);
+        transform: translateY(-1px);
+      }
+
+      .hud-entity-name {
+        font-weight: 600;
+        font-size: 13px;
+        color: #ffffff;
+      }
+
+      .hud-state-badge {
+        font-size: 11px;
+        font-weight: 500;
+        padding: 2px 8px;
+        border-radius: 10px;
+        background: rgba(148, 163, 184, 0.2);
+        color: #e2e8f0;
+      }
+
+      .hud-state-badge.moving {
+        background: rgba(34, 197, 94, 0.25);
+        color: #4ade80;
+      }
+
+      .hud-metrics-wrap {
+        display: flex;
+        gap: 6px;
+        pointer-events: auto;
+      }
+
+      .hud-badge {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 6px 10px;
+        border-radius: 18px;
+        background: rgba(15, 23, 42, 0.78);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        color: #f8fafc;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+      }
+
+      .speed-badge svg {
+        stroke: #38bdf8;
+      }
+
+      .battery-badge svg {
+        stroke: #4ade80;
+      }
+
+      /* Bottom HUD Bar */
+      .hud-bottom-bar {
+        position: absolute;
+        bottom: 12px;
+        left: 12px;
+        right: 12px;
+        z-index: 400;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        pointer-events: none;
+      }
+
+      .hud-compass-chip {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 10px;
+        border-radius: 16px;
+        background: rgba(15, 23, 42, 0.78);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        color: #ffffff;
+        font-size: 12px;
+        font-weight: 600;
+        pointer-events: auto;
+      }
+
+      .compass-needle-icon {
+        transition: transform 0.45s cubic-bezier(0.25, 1, 0.5, 1);
+      }
+
+      .hud-controls {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        pointer-events: auto;
+      }
+
+      .recenter-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 18px;
+        background: var(--primary-color, #1e88e5);
+        color: #ffffff;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: filter 0.15s ease, transform 0.15s ease;
+      }
+
+      .recenter-btn:hover {
+        filter: brightness(1.15);
+        transform: translateY(-1px);
+      }
+
+      .last-updated-chip {
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 12px;
+        background: rgba(15, 23, 42, 0.7);
+        backdrop-filter: blur(6px);
+        color: #94a3b8;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      /* Custom Leaflet Controls */
+      .leaflet-control-zoom {
+        border: none !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+        border-radius: 8px !important;
+        overflow: hidden;
+        margin-right: 12px !important;
+        margin-bottom: 48px !important;
+      }
+
+      .leaflet-control-zoom a {
+        background-color: rgba(15, 23, 42, 0.85) !important;
+        color: #f8fafc !important;
+        border-color: rgba(255, 255, 255, 0.15) !important;
+        backdrop-filter: blur(8px);
+      }
+
+      .leaflet-control-zoom a:hover {
+        background-color: rgba(30, 41, 59, 0.95) !important;
+      }
+
+      .leaflet-control-attribution {
+        background: rgba(15, 23, 42, 0.6) !important;
+        color: #94a3b8 !important;
+        font-size: 9px !important;
+        padding: 2px 6px !important;
+        border-radius: 4px;
+        margin-left: 12px !important;
+        margin-bottom: 4px !important;
+      }
+
+      .leaflet-control-attribution a {
+        color: #cbd5e1 !important;
+        text-decoration: none;
+      }
+
+      /* Zone Tooltip */
+      .zone-tooltip {
+        background: rgba(15, 23, 42, 0.88) !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        color: #f8fafc !important;
+        font-size: 11px !important;
+        font-weight: 500 !important;
+        border-radius: 6px !important;
+        padding: 3px 6px !important;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3) !important;
+      }
+      .zone-tooltip::before {
+        border-top-color: rgba(15, 23, 42, 0.88) !important;
+      }
+    `,
+  ];
+}
