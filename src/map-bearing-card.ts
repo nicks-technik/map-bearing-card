@@ -7,7 +7,6 @@ import {
   HomeAssistant,
   MapBearingCardConfig,
   VehicleState,
-  ZoneData,
 } from './types';
 import { DEFAULT_CONFIG, TILE_LAYERS, TileLayerDef, CARD_TAG } from './const';
 import { buildVehicleState, extractZones } from './utils/entity';
@@ -21,6 +20,7 @@ export class MapBearingCard extends LitElement {
   @state() private _isFollowing: boolean = true;
   @state() private _hasValidCoords: boolean = false;
   @state() private _currentThemeDark: boolean = false;
+  @state() private _headsUpMode: boolean = false;
 
   private _map: L.Map | null = null;
   private _vehicleMarker: L.Marker | null = null;
@@ -34,20 +34,28 @@ export class MapBearingCard extends LitElement {
   private _trailPoints: [number, number][] = [];
   private _previousPos: { lat: number; lon: number } | null = null;
   private _resizeObserver: ResizeObserver | null = null;
+  private _historyLoaded: boolean = false;
 
   static getStubConfig(hass: HomeAssistant): Partial<MapBearingCardConfig> {
-    const defaultTracker = Object.keys(hass.states).find(
+    const xpengTracker = Object.keys(hass.states).find(
+      (eid) => eid.includes('xpeng') && eid.startsWith('device_tracker.')
+    );
+    const anyTracker = Object.keys(hass.states).find(
       (eid) => eid.startsWith('device_tracker.') || eid.startsWith('sensor.')
     );
+
     return {
       type: `custom:${CARD_TAG}`,
-      entity: defaultTracker || 'device_tracker.my_car',
-      title: 'Vehicle Tracker',
-      vehicle_type: 'car',
-      vehicle_color: '#1e88e5',
+      entity: xpengTracker || anyTracker || 'device_tracker.xpeng_g6_location',
+      title: 'XPENG G6',
+      vehicle_type: 'xpeng_g6',
+      vehicle_color: '#ea580c',
       show_bearing_cone: true,
       show_accuracy: true,
       show_hud: true,
+      show_range: true,
+      show_charging: true,
+      heads_up_mode: false,
       default_zoom: 16,
     };
   }
@@ -66,6 +74,7 @@ export class MapBearingCard extends LitElement {
       ...DEFAULT_CONFIG,
       ...config,
     };
+    this._headsUpMode = !!this._config.heads_up_mode;
   }
 
   public connectedCallback(): void {
@@ -98,6 +107,9 @@ export class MapBearingCard extends LitElement {
     if (changedProperties.has('hass') && this.hass && this._config) {
       this._updateVehicleFromHass();
       this._checkThemeChange();
+      if (!this._historyLoaded && this._config.history_trail?.hours_to_show) {
+        this._loadHistoryFromHA();
+      }
     }
 
     if (changedProperties.has('_config') && this._config && this._map) {
@@ -120,7 +132,6 @@ export class MapBearingCard extends LitElement {
   private _isDarkMode(): boolean {
     if (this._config.dark_mode === true) return true;
     if (this._config.dark_mode === false) return false;
-    // auto detect from Home Assistant
     if (this.hass?.themes?.darkMode !== undefined) {
       return !!this.hass.themes.darkMode;
     }
@@ -152,32 +163,25 @@ export class MapBearingCard extends LitElement {
       maxZoom,
     });
 
-    // Add zoom control at bottom-right
     L.control.zoom({ position: 'bottomright' }).addTo(this._map);
-
-    // Add attribution at bottom-left in subtle style
     L.control.attribution({ position: 'bottomleft', prefix: false }).addTo(this._map);
 
     this._updateTileLayer();
     this._zoneLayers.addTo(this._map);
 
-    // Map drag listener to disable auto-following
     this._map.on('dragstart', () => {
       this._isFollowing = false;
     });
 
-    // If we already have vehicle coords, center map
     if (this._vehicleState && this._vehicleState.latitude !== null && this._vehicleState.longitude !== null) {
       this._map.setView(
         [this._vehicleState.latitude, this._vehicleState.longitude],
         initialZoom
       );
     } else {
-      // Default to neutral center until location received
       this._map.setView([51.505, -0.09], initialZoom);
     }
 
-    // Trigger size update once DOM layout settles
     requestAnimationFrame(() => {
       this._map?.invalidateSize();
       this._renderMapElements();
@@ -221,7 +225,6 @@ export class MapBearingCard extends LitElement {
   }
 
   private _updateVehicleFromHass(): void {
-    const prevState = this._vehicleState;
     const newState = buildVehicleState(this.hass, this._config, this._previousPos);
     this._vehicleState = newState;
 
@@ -231,9 +234,8 @@ export class MapBearingCard extends LitElement {
     if (hasCoords) {
       this._previousPos = { lat: newState.latitude!, lon: newState.longitude! };
 
-      // Update history trail points
-      if (this._config.history_trail?.enabled) {
-        const maxPoints = this._config.history_trail.max_points || 100;
+      if (this._config.history_trail?.enabled !== false) {
+        const maxPoints = this._config.history_trail?.max_points || 120;
         const lastPoint = this._trailPoints[this._trailPoints.length - 1];
         if (!lastPoint || lastPoint[0] !== newState.latitude || lastPoint[1] !== newState.longitude) {
           this._trailPoints.push([newState.latitude!, newState.longitude!]);
@@ -245,7 +247,6 @@ export class MapBearingCard extends LitElement {
 
       this._renderMapElements();
 
-      // Recenter or follow vehicle if enabled
       if (this._isFollowing && this._config.follow_vehicle !== false && this._map) {
         this._map.panTo([newState.latitude!, newState.longitude!], {
           animate: true,
@@ -255,35 +256,80 @@ export class MapBearingCard extends LitElement {
     }
   }
 
+  private async _loadHistoryFromHA(): Promise<void> {
+    if (this._historyLoaded || !this.hass?.callApi || !this._config.entity) return;
+    this._historyLoaded = true;
+
+    try {
+      const hours = this._config.history_trail?.hours_to_show || 2;
+      const startTime = new Date(Date.now() - hours * 3600 * 1000).toISOString();
+      const endpoint = `history/period/${startTime}?filter_entity_id=${this._config.entity}&minimal_response&significant_changes_only=0`;
+      
+      const historyData = await this.hass.callApi<any[]>('GET', endpoint);
+      if (Array.isArray(historyData) && historyData.length > 0 && Array.isArray(historyData[0])) {
+        const points: [number, number][] = [];
+        for (const item of historyData[0]) {
+          const lat = parseFloat(item.attributes?.latitude);
+          const lon = parseFloat(item.attributes?.longitude);
+          if (isFinite(lat) && isFinite(lon)) {
+            points.push([lat, lon]);
+          }
+        }
+        if (points.length > 0) {
+          this._trailPoints = points;
+          this._renderMapElements();
+        }
+      }
+    } catch {
+      // Gracefully continue with live breadcrumbs if history API not available
+    }
+  }
+
   private _renderMapElements(): void {
     if (!this._map || !this._vehicleState || !this._hasValidCoords) return;
 
-    const { latitude, longitude, bearing, accuracy } = this._vehicleState;
+    const { latitude, longitude, bearing, accuracy, isMoving } = this._vehicleState;
     if (latitude === null || longitude === null) return;
 
     const latLng = L.latLng(latitude, longitude);
-    const vehicleColor = this._config.vehicle_color || '#1e88e5';
-    const vehicleSize = this._config.vehicle_size || 46;
+    const vehicleColor = this._config.vehicle_color || '#ea580c';
+    const vehicleSize = this._config.vehicle_size || 48;
     const showCone = this._config.show_bearing_cone !== false;
 
-    // Calculate smooth continuous angle
+    // Smooth continuous angle
     const targetBearing = bearing ?? 0;
     const smoothAngle = unwrapAngle(targetBearing, this._lastRotatedAngle);
     this._lastRotatedAngle = smoothAngle;
 
-    // Build vehicle HTML with rotation wrapper and optional beam
+    // If Heads-Up mode active, rotate the map so vehicle faces UP
+    const mapRotator = this.shadowRoot?.querySelector('#map-rotator') as HTMLElement;
+    if (mapRotator) {
+      if (this._headsUpMode) {
+        mapRotator.style.transform = `rotate(${-smoothAngle}deg)`;
+      } else {
+        mapRotator.style.transform = 'none';
+      }
+    }
+
+    // Vehicle SVG markup
     const vehicleSvg = getVehicleSvg(
       this._config.vehicle_type,
       vehicleColor,
-      this._config.vehicle_image
+      this._config.vehicle_image,
+      !isMoving
     );
+
+    // Directional beam: dimmed when parked
     const coneHtml = showCone
-      ? renderDirectionalBeam(this._config.cone_color || vehicleColor, 0.4)
+      ? renderDirectionalBeam(this._config.cone_color || vehicleColor, 0.38, !isMoving)
       : '';
+
+    // If Heads-Up mode is active, vehicle rotator stays 0 (pointing UP on screen)
+    const markerRotation = this._headsUpMode ? 0 : smoothAngle;
 
     const iconHtml = `
       <div class="map-bearing-vehicle-wrapper" style="width: ${vehicleSize}px; height: ${vehicleSize}px;">
-        <div class="vehicle-bearing-rotator" style="transform: rotate(${smoothAngle}deg);">
+        <div class="vehicle-bearing-rotator" style="transform: rotate(${markerRotation}deg);">
           ${coneHtml}
           <div class="vehicle-icon-inner" style="width: 100%; height: 100%;">
             ${vehicleSvg}
@@ -334,9 +380,9 @@ export class MapBearingCard extends LitElement {
     }
 
     // Render History Trail
-    if (this._config.history_trail?.enabled && this._trailPoints.length > 1) {
-      const trailColor = this._config.history_trail.trail_color || vehicleColor;
-      const trailWidth = this._config.history_trail.trail_width || 3;
+    if (this._config.history_trail?.enabled !== false && this._trailPoints.length > 1) {
+      const trailColor = this._config.history_trail?.trail_color || vehicleColor;
+      const trailWidth = this._config.history_trail?.trail_width || 3;
       if (!this._trailPolyline) {
         this._trailPolyline = L.polyline(this._trailPoints, {
           color: trailColor,
@@ -350,7 +396,7 @@ export class MapBearingCard extends LitElement {
       }
     }
 
-    // Render Home Assistant Zones
+    // Render Zones
     if (this._config.show_zones !== false) {
       this._renderZones();
     }
@@ -362,7 +408,7 @@ export class MapBearingCard extends LitElement {
 
     const zones = extractZones(this.hass);
     for (const z of zones) {
-      if (z.passive) continue; // skip passive zones if desired
+      if (z.passive) continue;
       const circle = L.circle([z.latitude, z.longitude], {
         radius: z.radius,
         color: '#0284c7',
@@ -392,6 +438,11 @@ export class MapBearingCard extends LitElement {
     }
   }
 
+  private _toggleHeadsUpMode(): void {
+    this._headsUpMode = !this._headsUpMode;
+    this._renderMapElements();
+  }
+
   private _handleEntityClick(): void {
     const entityId = this._config.entity;
     if (!entityId) return;
@@ -411,18 +462,22 @@ export class MapBearingCard extends LitElement {
 
     const height = typeof this._config.card_height === 'number'
       ? `${this._config.card_height}px`
-      : this._config.card_height || '380px';
+      : this._config.card_height || '400px';
 
     const vs = this._vehicleState;
     const showHud = this._config.show_hud !== false;
     const hasBearing = vs?.bearing !== null && vs?.bearing !== undefined;
     const hasSpeed = vs?.speed !== null;
     const hasBattery = vs?.battery !== null;
+    const hasRange = vs?.range !== null;
 
     return html`
       <ha-card class="map-bearing-card">
         <div id="map-container" style="height: ${height};">
-          <div id="map"></div>
+          <!-- Inner wrapper that rotates when Heads-Up mode is active -->
+          <div id="map-rotator" class="${this._headsUpMode ? 'heads-up-active' : ''}">
+            <div id="map"></div>
+          </div>
 
           ${!this._hasValidCoords
             ? html`
@@ -442,11 +497,13 @@ export class MapBearingCard extends LitElement {
 
           ${showHud && vs
             ? html`
-                <!-- Top HUD Bar: Vehicle Name, State, Battery -->
+                <!-- Top HUD Bar: Name, Status, EV Metrics (Speed, Battery, Range, Charging) -->
                 <div class="hud-top-bar" @click=${this._handleEntityClick}>
                   <div class="hud-title-wrap">
                     <span class="hud-entity-name">${vs.name}</span>
-                    <span class="hud-state-badge ${vs.isMoving ? 'moving' : ''}">${vs.stateText}</span>
+                    <span class="hud-state-badge ${vs.isMoving ? 'moving' : 'parked'}">
+                      ${vs.stateText}
+                    </span>
                   </div>
 
                   <div class="hud-metrics-wrap">
@@ -464,36 +521,69 @@ export class MapBearingCard extends LitElement {
 
                     ${this._config.show_battery !== false && hasBattery
                       ? html`
-                          <div class="hud-badge battery-badge">
-                            <svg class="hud-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                              <rect x="2" y="7" width="16" height="10" rx="2" ry="2"/>
-                              <line x1="22" y1="11" x2="22" y2="13"/>
-                            </svg>
+                          <div class="hud-badge battery-badge ${vs.isCharging ? 'charging' : ''}">
+                            ${vs.isCharging
+                              ? html`
+                                  <svg class="hud-icon charge-icon" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                                    <polygon points="13,2 3,14 12,14 11,22 21,10 12,10" />
+                                  </svg>
+                                `
+                              : html`
+                                  <svg class="hud-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="2" y="7" width="16" height="10" rx="2" ry="2"/>
+                                    <line x1="22" y1="11" x2="22" y2="13"/>
+                                  </svg>
+                                `}
                             <span>${vs.battery}%</span>
+                          </div>
+                        `
+                      : ''}
+
+                    ${this._config.show_range !== false && hasRange
+                      ? html`
+                          <div class="hud-badge range-badge">
+                            <svg class="hud-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                            </svg>
+                            <span>${vs.range}</span>
                           </div>
                         `
                       : ''}
                   </div>
                 </div>
 
-                <!-- Bottom HUD Bar: Compass/Bearing & Recenter Button -->
+                <!-- Bottom HUD Bar: Compass, Heads-Up Toggle, Recenter -->
                 <div class="hud-bottom-bar">
-                  ${this._config.show_bearing !== false && hasBearing
-                    ? html`
-                        <div class="hud-compass-chip">
-                          <svg
-                            class="compass-needle-icon"
-                            viewBox="0 0 24 24"
-                            width="16"
-                            height="16"
-                            style="transform: rotate(${vs.bearing}deg);"
-                          >
-                            <polygon points="12,2 17,21 12,17 7,21" fill="#ef4444" />
-                          </svg>
-                          <span class="compass-text">${formatBearingDisplay(vs.bearing)}</span>
-                        </div>
-                      `
-                    : html`<div></div>`}
+                  <div class="hud-left-controls">
+                    ${this._config.show_bearing !== false && hasBearing
+                      ? html`
+                          <div class="hud-compass-chip">
+                            <svg
+                              class="compass-needle-icon"
+                              viewBox="0 0 24 24"
+                              width="16"
+                              height="16"
+                              style="transform: rotate(${vs.bearing}deg);"
+                            >
+                              <polygon points="12,2 17,21 12,17 7,21" fill="#ef4444" />
+                            </svg>
+                            <span class="compass-text">${formatBearingDisplay(vs.bearing)}</span>
+                          </div>
+                        `
+                      : ''}
+
+                    <button
+                      class="nav-mode-btn ${this._headsUpMode ? 'active' : ''}"
+                      @click=${this._toggleHeadsUpMode}
+                      title="Toggle Heads-Up (rotating map) or North-Up mode"
+                    >
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <polygon points="12,6 16,14 12,12 8,14" fill="currentColor" />
+                      </svg>
+                      <span>${this._headsUpMode ? 'Heads-Up' : 'North-Up'}</span>
+                    </button>
+                  </div>
 
                   <div class="hud-controls">
                     ${this._config.recenter_button !== false && !this._isFollowing
@@ -503,7 +593,7 @@ export class MapBearingCard extends LitElement {
                             @click=${this._handleRecenter}
                             title="Re-center on vehicle"
                           >
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                               <circle cx="12" cy="12" r="9"/>
                               <circle cx="12" cy="12" r="3"/>
                               <line x1="12" y1="1" x2="12" y2="5"/>
@@ -537,8 +627,8 @@ export class MapBearingCard extends LitElement {
     css`
       :host {
         display: block;
-        --card-radius: var(--ha-card-border-radius, 12px);
-        --primary-color: var(--primary-color, #1e88e5);
+        --card-radius: var(--ha-card-border-radius, 16px);
+        --primary-color: var(--primary-color, #ea580c);
       }
 
       ha-card {
@@ -550,7 +640,21 @@ export class MapBearingCard extends LitElement {
       #map-container {
         position: relative;
         width: 100%;
-        background-color: var(--primary-background-color, #111827);
+        overflow: hidden;
+        background-color: var(--primary-background-color, #0f172a);
+      }
+
+      #map-rotator {
+        position: absolute;
+        inset: -50%;
+        width: 200%;
+        height: 200%;
+        transform-origin: center center;
+        transition: transform 0.45s cubic-bezier(0.25, 1, 0.5, 1);
+      }
+
+      #map-rotator.heads-up-active {
+        will-change: transform;
       }
 
       #map {
@@ -602,8 +706,8 @@ export class MapBearingCard extends LitElement {
         position: absolute;
         inset: 0;
         z-index: 500;
-        background: rgba(15, 23, 42, 0.75);
-        backdrop-filter: blur(4px);
+        background: rgba(15, 23, 42, 0.78);
+        backdrop-filter: blur(5px);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -613,9 +717,9 @@ export class MapBearingCard extends LitElement {
         text-align: center;
         color: #f8fafc;
         padding: 24px 32px;
-        background: rgba(30, 41, 59, 0.85);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 12px;
+        background: rgba(30, 41, 59, 0.9);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 14px;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
       }
 
@@ -647,38 +751,41 @@ export class MapBearingCard extends LitElement {
         justify-content: space-between;
         align-items: center;
         pointer-events: none;
+        flex-wrap: wrap;
+        gap: 8px;
       }
 
       .hud-title-wrap {
         display: flex;
         align-items: center;
         gap: 8px;
-        background: rgba(15, 23, 42, 0.78);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        padding: 6px 12px;
+        background: rgba(15, 23, 42, 0.82);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        padding: 6px 14px;
         border-radius: 20px;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
         pointer-events: auto;
         cursor: pointer;
         transition: transform 0.15s ease, background-color 0.15s ease;
       }
 
       .hud-title-wrap:hover {
-        background: rgba(15, 23, 42, 0.92);
+        background: rgba(15, 23, 42, 0.95);
         transform: translateY(-1px);
       }
 
       .hud-entity-name {
-        font-weight: 600;
+        font-weight: 700;
         font-size: 13px;
         color: #ffffff;
+        letter-spacing: -0.2px;
       }
 
       .hud-state-badge {
         font-size: 11px;
-        font-weight: 500;
+        font-weight: 600;
         padding: 2px 8px;
         border-radius: 10px;
         background: rgba(148, 163, 184, 0.2);
@@ -686,8 +793,13 @@ export class MapBearingCard extends LitElement {
       }
 
       .hud-state-badge.moving {
-        background: rgba(34, 197, 94, 0.25);
+        background: rgba(34, 197, 94, 0.28);
         color: #4ade80;
+      }
+
+      .hud-state-badge.parked {
+        background: rgba(148, 163, 184, 0.18);
+        color: #cbd5e1;
       }
 
       .hud-metrics-wrap {
@@ -702,14 +814,14 @@ export class MapBearingCard extends LitElement {
         gap: 5px;
         font-size: 12px;
         font-weight: 600;
-        padding: 6px 10px;
+        padding: 6px 11px;
         border-radius: 18px;
-        background: rgba(15, 23, 42, 0.78);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(15, 23, 42, 0.82);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.16);
         color: #f8fafc;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
       }
 
       .speed-badge svg {
@@ -718,6 +830,25 @@ export class MapBearingCard extends LitElement {
 
       .battery-badge svg {
         stroke: #4ade80;
+      }
+
+      .battery-badge.charging {
+        border-color: #22c55e;
+        color: #4ade80;
+      }
+
+      .charge-icon {
+        color: #22c55e;
+        animation: pulse 1.8s infinite ease-in-out;
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.6; transform: scale(0.9); }
+      }
+
+      .range-badge svg {
+        stroke: #f59e0b;
       }
 
       /* Bottom HUD Bar */
@@ -733,25 +864,54 @@ export class MapBearingCard extends LitElement {
         pointer-events: none;
       }
 
+      .hud-left-controls {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        pointer-events: auto;
+      }
+
       .hud-compass-chip {
         display: flex;
         align-items: center;
         gap: 6px;
-        padding: 5px 10px;
+        padding: 5px 11px;
         border-radius: 16px;
-        background: rgba(15, 23, 42, 0.78);
-        backdrop-filter: blur(8px);
-        -webkit-backdrop-filter: blur(8px);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        background: rgba(15, 23, 42, 0.82);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
         color: #ffffff;
         font-size: 12px;
         font-weight: 600;
-        pointer-events: auto;
       }
 
       .compass-needle-icon {
         transition: transform 0.45s cubic-bezier(0.25, 1, 0.5, 1);
+      }
+
+      .nav-mode-btn {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 10px;
+        border-radius: 16px;
+        background: rgba(15, 23, 42, 0.82);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+        color: #cbd5e1;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .nav-mode-btn.active {
+        background: #0284c7;
+        color: #ffffff;
+        border-color: #38bdf8;
       }
 
       .hud-controls {
@@ -767,12 +927,12 @@ export class MapBearingCard extends LitElement {
         gap: 6px;
         padding: 6px 12px;
         border-radius: 18px;
-        background: var(--primary-color, #1e88e5);
+        background: var(--primary-color, #ea580c);
         color: #ffffff;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
         font-size: 12px;
-        font-weight: 600;
+        font-weight: 700;
         cursor: pointer;
         transition: filter 0.15s ease, transform 0.15s ease;
       }
@@ -786,7 +946,7 @@ export class MapBearingCard extends LitElement {
         font-size: 11px;
         padding: 4px 8px;
         border-radius: 12px;
-        background: rgba(15, 23, 42, 0.7);
+        background: rgba(15, 23, 42, 0.75);
         backdrop-filter: blur(6px);
         color: #94a3b8;
         border: 1px solid rgba(255, 255, 255, 0.1);
@@ -795,7 +955,7 @@ export class MapBearingCard extends LitElement {
       /* Custom Leaflet Controls */
       .leaflet-control-zoom {
         border: none !important;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35) !important;
         border-radius: 8px !important;
         overflow: hidden;
         margin-right: 12px !important;
@@ -803,7 +963,7 @@ export class MapBearingCard extends LitElement {
       }
 
       .leaflet-control-zoom a {
-        background-color: rgba(15, 23, 42, 0.85) !important;
+        background-color: rgba(15, 23, 42, 0.88) !important;
         color: #f8fafc !important;
         border-color: rgba(255, 255, 255, 0.15) !important;
         backdrop-filter: blur(8px);
@@ -814,7 +974,7 @@ export class MapBearingCard extends LitElement {
       }
 
       .leaflet-control-attribution {
-        background: rgba(15, 23, 42, 0.6) !important;
+        background: rgba(15, 23, 42, 0.65) !important;
         color: #94a3b8 !important;
         font-size: 9px !important;
         padding: 2px 6px !important;

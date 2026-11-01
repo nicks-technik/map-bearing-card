@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Home Assistant Map Bearing Card — Interactive Demo</title>
+    <title>Home Assistant Map Bearing Card — XPENG G6 & EV Demo</title>
     <style>
       :root {
-        --primary-color: #1e88e5;
+        --primary-color: #ea580c;
         --primary-background-color: #0f172a;
         --secondary-background-color: #1e293b;
         --card-background-color: #1e293b;
@@ -34,7 +34,7 @@
       }
 
       body.light-theme {
-        --primary-color: #0284c7;
+        --primary-color: #ea580c;
         --primary-background-color: #f1f5f9;
         --secondary-background-color: #ffffff;
         --card-background-color: #ffffff;
@@ -71,7 +71,7 @@
         font-weight: 700;
         padding: 4px 8px;
         border-radius: 6px;
-        background: #1e88e5;
+        background: #ea580c;
         color: white;
         text-transform: uppercase;
       }
@@ -81,7 +81,7 @@
         margin: 0 auto;
         width: 100%;
         display: grid;
-        grid-template-columns: 1fr 380px;
+        grid-template-columns: 1fr 390px;
         gap: 24px;
         align-items: start;
       }
@@ -100,7 +100,7 @@
 
       .card-shell {
         border-radius: 16px;
-        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
         overflow: hidden;
         border: 1px solid var(--divider-color);
       }
@@ -162,6 +162,40 @@
         outline: none;
       }
 
+      .preset-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 4px;
+      }
+
+      .preset-chip {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 9px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid var(--divider-color);
+        color: var(--primary-text-color);
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      .preset-chip:hover {
+        background: rgba(255, 255, 255, 0.12);
+        transform: translateY(-1px);
+      }
+
+      .chip-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+      }
+
       .btn-row {
         display: flex;
         gap: 8px;
@@ -212,7 +246,7 @@
 
       .yaml-preview {
         background: #090d16;
-        color: #93c5fd;
+        color: #fdba74;
         font-family: monospace;
         font-size: 12px;
         padding: 14px;
@@ -227,8 +261,8 @@
   <body>
     <header>
       <div class="header-title">
-        <h1>Home Assistant Map Bearing Card</h1>
-        <span class="badge">v1.0.0</span>
+        <h1>XPENG G6 Map Bearing Card</h1>
+        <span class="badge">v1.1.0</span>
       </div>
       <div class="btn-row">
         <button id="toggle-theme-btn" class="btn-secondary">🌙 Toggle Dark/Light Mode</button>
@@ -243,7 +277,7 @@
         </div>
 
         <div style="background: var(--secondary-background-color); border: 1px solid var(--divider-color); border-radius: 12px; padding: 16px;">
-          <h3 style="font-size: 14px; margin-bottom: 8px; color: var(--primary-color);">Lovelace YAML Configuration</h3>
+          <h3 style="font-size: 14px; margin-bottom: 8px; color: var(--primary-color);">Lovelace YAML Configuration for XPENG</h3>
           <div id="yaml-display" class="yaml-preview"></div>
         </div>
       </div>
@@ -267,103 +301,101 @@
         </div>
 
         <div>
-          <div class="panel-section-title">Vehicle Model & Styling</div>
+          <div class="panel-section-title">XPENG G6 Model & Colors</div>
           <div class="control-group" style="margin-bottom: 10px;">
             <label class="control-label">Vehicle Silhouette</label>
             <select id="vehicle-type-select">
-              <option value="car" selected>Modern Sedan / EV</option>
-              <option value="sports_car">Sports Car (GT)</option>
-              <option value="suv">SUV / Crossover</option>
-              <option value="truck">Truck / Van</option>
+              <option value="xpeng_g6" selected>XPENG G6 Coupe-SUV (Robot Face LED)</option>
+              <option value="car">Modern Aerodynamic Sedan / EV</option>
+              <option value="sports_car">Sports Car (GT Aero)</option>
+              <option value="suv">Standard SUV / Crossover</option>
               <option value="arrow">Navigation Arrow</option>
               <option value="pointer">Compass Pointer</option>
             </select>
           </div>
 
           <div class="control-group" style="margin-bottom: 10px;">
-            <label class="control-label">Vehicle Color</label>
-            <div style="display: flex; gap: 8px; align-items: center;">
-              <input type="color" id="vehicle-color-picker" value="#1e88e5" style="border: none; width: 36px; height: 36px; cursor: pointer; background: transparent;" />
-              <select id="color-preset-select" style="flex: 1;">
-                <option value="#1e88e5" selected>Blue (Tesla / Electric)</option>
-                <option value="#ef4444">Torch Red (Sport)</option>
-                <option value="#10b981">Emerald Green</option>
-                <option value="#f59e0b">Amber Gold</option>
-                <option value="#8b5cf6">Ultra Violet</option>
-                <option value="#ffffff">Alpine White</option>
-                <option value="#1e293b">Midnight Obsidian</option>
-              </select>
+            <label class="control-label">XPENG Factory Colors</label>
+            <div class="preset-chips">
+              <button class="preset-chip" data-color="#ea580c"><span class="chip-color" style="background: #ea580c;"></span>Fiery Orange</button>
+              <button class="preset-chip" data-color="#f8fafc"><span class="chip-color" style="background: #f8fafc;"></span>Arctic White</button>
+              <button class="preset-chip" data-color="#4b5563"><span class="chip-color" style="background: #4b5563;"></span>Graphite</button>
+              <button class="preset-chip" data-color="#94a3b8"><span class="chip-color" style="background: #94a3b8;"></span>Silver</button>
+              <button class="preset-chip" data-color="#0f172a"><span class="chip-color" style="background: #0f172a;"></span>Obsidian</button>
+              <button class="preset-chip" data-color="#059669"><span class="chip-color" style="background: #059669;"></span>Nebula</button>
             </div>
           </div>
 
           <div class="control-group">
             <div class="control-label">
               <span>Vehicle Size:</span>
-              <span id="size-val">46px</span>
+              <span id="size-val">48px</span>
             </div>
-            <input type="range" id="size-slider" min="28" max="72" step="2" value="46" />
+            <input type="range" id="size-slider" min="32" max="76" step="2" value="48" />
           </div>
         </div>
 
         <div>
-          <div class="panel-section-title">Map Tile Provider</div>
-          <select id="map-provider-select">
-            <option value="auto" selected>Auto (Theme-Matching)</option>
-            <option value="carto_dark">Carto Dark Matter (Dark)</option>
-            <option value="carto_light">Carto Positron (Light)</option>
-            <option value="osm">OpenStreetMap</option>
-            <option value="satellite">Satellite (Esri Imagery)</option>
-            <option value="opentopo">OpenTopoMap</option>
-          </select>
-        </div>
+          <div class="panel-section-title">Navigation & Map Modes</div>
+          <div class="control-group" style="margin-bottom: 10px;">
+            <label class="control-label">Map Tile Provider</label>
+            <select id="map-provider-select">
+              <option value="auto" selected>Auto (Theme-Matching)</option>
+              <option value="carto_dark">Carto Dark Matter (Dark)</option>
+              <option value="carto_light">Carto Positron (Light)</option>
+              <option value="osm">OpenStreetMap</option>
+              <option value="satellite">Satellite (Esri Imagery)</option>
+              <option value="opentopo">OpenTopoMap</option>
+            </select>
+          </div>
 
-        <div>
-          <div class="panel-section-title">Feature Toggles</div>
           <div style="display: flex; flex-direction: column; gap: 8px;">
             <label class="checkbox-label">
+              <input type="checkbox" id="heads-up-toggle" />
+              <span>Heads-Up Mode (Rotate Map with Car)</span>
+            </label>
+            <label class="checkbox-label">
               <input type="checkbox" id="beam-toggle" checked />
-              <span>Directional Beam (Cone of Sight)</span>
+              <span>Directional Headlight Beam</span>
             </label>
             <label class="checkbox-label">
               <input type="checkbox" id="accuracy-toggle" checked />
               <span>GPS Accuracy Radius Circle</span>
             </label>
             <label class="checkbox-label">
-              <input type="checkbox" id="hud-toggle" checked />
-              <span>HUD Overlay (Speed, Compass, State)</span>
-            </label>
-            <label class="checkbox-label">
-              <input type="checkbox" id="follow-toggle" checked />
-              <span>Auto-Follow Vehicle</span>
-            </label>
-            <label class="checkbox-label">
-              <input type="checkbox" id="zones-toggle" checked />
-              <span>Show Home & Office Zones</span>
+              <input type="checkbox" id="charging-toggle" />
+              <span>Simulate Charging (Active Plug)</span>
             </label>
           </div>
         </div>
 
         <div>
-          <div class="panel-section-title">Speed & Battery</div>
+          <div class="panel-section-title">XPENG Telemetry Metrics</div>
           <div class="control-group" style="margin-bottom: 8px;">
             <div class="control-label">
               <span>Speed:</span>
-              <span id="speed-val">58 km/h</span>
+              <span id="speed-val">68 km/h</span>
             </div>
-            <input type="range" id="speed-slider" min="0" max="180" step="1" value="58" />
+            <input type="range" id="speed-slider" min="0" max="180" step="1" value="68" />
+          </div>
+          <div class="control-group" style="margin-bottom: 8px;">
+            <div class="control-label">
+              <span>Battery SOC:</span>
+              <span id="battery-val">76%</span>
+            </div>
+            <input type="range" id="battery-slider" min="5" max="100" step="1" value="76" />
           </div>
           <div class="control-group">
             <div class="control-label">
-              <span>Battery:</span>
-              <span id="battery-val">78%</span>
+              <span>Remaining Range:</span>
+              <span id="range-val">425 km</span>
             </div>
-            <input type="range" id="battery-slider" min="5" max="100" step="1" value="78" />
+            <input type="range" id="range-slider" min="30" max="600" step="5" value="425" />
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Script loading the custom card -->
     <script type="module" src="/src/index.ts"></script>
     <script type="module">
       import { CARD_TAG } from '/src/const.ts';
@@ -373,28 +405,52 @@
       let currentBearing = 45;
       let currentLat = 52.5200;
       let currentLon = 13.4050;
-      let currentSpeed = 58;
-      let currentBattery = 78;
+      let currentSpeed = 68;
+      let currentBattery = 76;
+      let currentRange = 425;
+      let isCharging = false;
       let isSimulating = false;
       let simTimer = null;
       let isDark = true;
 
-      // Mock Home Assistant states
+      // Mock Home Assistant states with xpengtoolkit structure
       const mockHass = {
         states: {
-          'device_tracker.my_car': {
-            entity_id: 'device_tracker.my_car',
+          'device_tracker.xpeng_g6_location': {
+            entity_id: 'device_tracker.xpeng_g6_location',
             state: 'driving',
             attributes: {
-              friendly_name: 'Tesla Model Y',
+              friendly_name: 'XPENG G6',
               latitude: currentLat,
               longitude: currentLon,
+              course: currentBearing,
               bearing: currentBearing,
               speed: currentSpeed,
-              unit_of_measurement: 'km/h',
-              battery_level: currentBattery,
-              gps_accuracy: 14,
+              coord_valid: true,
+              fix_age_s: 15,
+              gps_accuracy: 12,
             },
+            last_changed: new Date().toISOString(),
+            last_updated: new Date().toISOString(),
+          },
+          'sensor.xpeng_g6_battery_soc': {
+            entity_id: 'sensor.xpeng_g6_battery_soc',
+            state: String(currentBattery),
+            attributes: { unit_of_measurement: '%' },
+            last_changed: new Date().toISOString(),
+            last_updated: new Date().toISOString(),
+          },
+          'sensor.xpeng_g6_remaining_range': {
+            entity_id: 'sensor.xpeng_g6_remaining_range',
+            state: String(currentRange),
+            attributes: { unit_of_measurement: 'km' },
+            last_changed: new Date().toISOString(),
+            last_updated: new Date().toISOString(),
+          },
+          'binary_sensor.xpeng_g6_charging': {
+            entity_id: 'binary_sensor.xpeng_g6_charging',
+            state: isCharging ? 'on' : 'off',
+            attributes: {},
             last_changed: new Date().toISOString(),
             last_updated: new Date().toISOString(),
           },
@@ -410,39 +466,25 @@
             last_changed: new Date().toISOString(),
             last_updated: new Date().toISOString(),
           },
-          'zone.office': {
-            entity_id: 'zone.office',
-            state: 'zoning',
-            attributes: {
-              friendly_name: 'Tech Campus',
-              latitude: 52.5260,
-              longitude: 13.4150,
-              radius: 160,
-            },
-            last_changed: new Date().toISOString(),
-            last_updated: new Date().toISOString(),
-          },
         },
-        themes: {
-          darkMode: isDark,
-        },
+        themes: { darkMode: isDark },
         language: 'en',
-        callService: async (domain, service, data) => {
-          console.log('Home Assistant callService:', domain, service, data);
-        },
+        callService: async () => {},
       };
 
-      // Card Config
       let cardConfig = {
         type: `custom:${CARD_TAG}`,
-        entity: 'device_tracker.my_car',
-        title: 'Cyber Cruiser',
-        vehicle_type: 'car',
-        vehicle_color: '#1e88e5',
-        vehicle_size: 46,
+        entity: 'device_tracker.xpeng_g6_location',
+        title: 'XPENG G6',
+        vehicle_type: 'xpeng_g6',
+        vehicle_color: '#ea580c',
+        vehicle_size: 48,
         show_bearing_cone: true,
         show_accuracy: true,
         show_hud: true,
+        show_range: true,
+        show_charging: true,
+        heads_up_mode: false,
         follow_vehicle: true,
         show_zones: true,
         map_provider: 'auto',
@@ -458,25 +500,25 @@ title: ${cardConfig.title}
 vehicle_type: ${cardConfig.vehicle_type}
 vehicle_color: "${cardConfig.vehicle_color}"
 vehicle_size: ${cardConfig.vehicle_size}
+heads_up_mode: ${cardConfig.heads_up_mode}
 show_bearing_cone: ${cardConfig.show_bearing_cone}
 show_accuracy: ${cardConfig.show_accuracy}
-map_provider: ${cardConfig.map_provider}
-follow_vehicle: ${cardConfig.follow_vehicle}
-show_zones: ${cardConfig.show_zones}
-show_hud: ${cardConfig.show_hud}`;
+show_range: ${cardConfig.show_range}
+show_charging: ${cardConfig.show_charging}
+map_provider: ${cardConfig.map_provider}`;
       }
 
       function pushHassUpdate() {
-        mockHass.states['device_tracker.my_car'].attributes.latitude = currentLat;
-        mockHass.states['device_tracker.my_car'].attributes.longitude = currentLon;
-        mockHass.states['device_tracker.my_car'].attributes.bearing = currentBearing;
-        mockHass.states['device_tracker.my_car'].attributes.speed = currentSpeed;
-        mockHass.states['device_tracker.my_car'].attributes.battery_level = currentBattery;
-        mockHass.states['device_tracker.my_car'].state = currentSpeed > 0 ? 'driving' : 'parked';
-        mockHass.states['device_tracker.my_car'].last_updated = new Date().toISOString();
+        mockHass.states['device_tracker.xpeng_g6_location'].attributes.latitude = currentLat;
+        mockHass.states['device_tracker.xpeng_g6_location'].attributes.longitude = currentLon;
+        mockHass.states['device_tracker.xpeng_g6_location'].attributes.course = currentBearing;
+        mockHass.states['device_tracker.xpeng_g6_location'].attributes.bearing = currentBearing;
+        mockHass.states['device_tracker.xpeng_g6_location'].attributes.speed = currentSpeed;
+        mockHass.states['device_tracker.xpeng_g6_location'].state = currentSpeed > 0 ? 'driving' : 'parked';
+        mockHass.states['sensor.xpeng_g6_battery_soc'].state = String(currentBattery);
+        mockHass.states['sensor.xpeng_g6_remaining_range'].state = String(currentRange);
+        mockHass.states['binary_sensor.xpeng_g6_charging'].state = isCharging ? 'on' : 'off';
         mockHass.themes.darkMode = isDark;
-
-        // Clone hass object reference so Lit triggers update
         card.hass = { ...mockHass };
       }
 
@@ -486,14 +528,12 @@ show_hud: ${cardConfig.show_hud}`;
         updateYamlPreview();
       }
 
-      // Initialize Card
       customElements.whenDefined(CARD_TAG).then(() => {
         card.setConfig(cardConfig);
         pushHassUpdate();
         updateYamlPreview();
       });
 
-      // Controls Binding
       const bearingSlider = document.getElementById('bearing-slider');
       const bearingVal = document.getElementById('bearing-val');
       bearingSlider.addEventListener('input', (e) => {
@@ -502,32 +542,23 @@ show_hud: ${cardConfig.show_hud}`;
         pushHassUpdate();
       });
 
-      const vehicleTypeSelect = document.getElementById('vehicle-type-select');
-      vehicleTypeSelect.addEventListener('change', (e) => {
+      document.querySelectorAll('.preset-chip').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          updateConfig({ vehicle_color: btn.dataset.color });
+        });
+      });
+
+      document.getElementById('vehicle-type-select').addEventListener('change', (e) => {
         updateConfig({ vehicle_type: e.target.value });
       });
 
-      const colorPicker = document.getElementById('vehicle-color-picker');
-      const colorPresets = document.getElementById('color-preset-select');
-      colorPicker.addEventListener('input', (e) => {
-        updateConfig({ vehicle_color: e.target.value });
-      });
-      colorPresets.addEventListener('change', (e) => {
-        colorPicker.value = e.target.value;
-        updateConfig({ vehicle_color: e.target.value });
+      document.getElementById('heads-up-toggle').addEventListener('change', (e) => {
+        updateConfig({ heads_up_mode: e.target.checked });
       });
 
-      const sizeSlider = document.getElementById('size-slider');
-      const sizeVal = document.getElementById('size-val');
-      sizeSlider.addEventListener('input', (e) => {
-        const val = Number(e.target.value);
-        sizeVal.textContent = `${val}px`;
-        updateConfig({ vehicle_size: val });
-      });
-
-      const mapProviderSelect = document.getElementById('map-provider-select');
-      mapProviderSelect.addEventListener('change', (e) => {
-        updateConfig({ map_provider: e.target.value });
+      document.getElementById('charging-toggle').addEventListener('change', (e) => {
+        isCharging = e.target.checked;
+        pushHassUpdate();
       });
 
       document.getElementById('beam-toggle').addEventListener('change', (e) => {
@@ -535,15 +566,6 @@ show_hud: ${cardConfig.show_hud}`;
       });
       document.getElementById('accuracy-toggle').addEventListener('change', (e) => {
         updateConfig({ show_accuracy: e.target.checked });
-      });
-      document.getElementById('hud-toggle').addEventListener('change', (e) => {
-        updateConfig({ show_hud: e.target.checked });
-      });
-      document.getElementById('follow-toggle').addEventListener('change', (e) => {
-        updateConfig({ follow_vehicle: e.target.checked });
-      });
-      document.getElementById('zones-toggle').addEventListener('change', (e) => {
-        updateConfig({ show_zones: e.target.checked });
       });
 
       const speedSlider = document.getElementById('speed-slider');
@@ -562,7 +584,14 @@ show_hud: ${cardConfig.show_hud}`;
         pushHassUpdate();
       });
 
-      // Dark / Light Theme Toggle
+      const rangeSlider = document.getElementById('range-slider');
+      const rangeVal = document.getElementById('range-val');
+      rangeSlider.addEventListener('input', (e) => {
+        currentRange = Number(e.target.value);
+        rangeVal.textContent = `${currentRange} km`;
+        pushHassUpdate();
+      });
+
       const toggleThemeBtn = document.getElementById('toggle-theme-btn');
       toggleThemeBtn.addEventListener('click', () => {
         isDark = !isDark;
@@ -571,10 +600,10 @@ show_hud: ${cardConfig.show_hud}`;
         pushHassUpdate();
       });
 
-      // Drive Simulation
+      // Drive Sim
       const driveSimBtn = document.getElementById('drive-sim-btn');
       let simAngle = 0;
-      const simRadius = 0.005; // radius in degrees (~550m)
+      const simRadius = 0.005;
       const centerLat = 52.5200;
       const centerLon = 13.4050;
 
@@ -588,17 +617,13 @@ show_hud: ${cardConfig.show_hud}`;
             simAngle = (simAngle + 0.04) % (2 * Math.PI);
             currentLat = centerLat + Math.sin(simAngle) * simRadius;
             currentLon = centerLon + Math.cos(simAngle) * (simRadius * 1.6);
-            
-            // Bearing is tangent to the circle
             const tangent = (simAngle + Math.PI / 2) * (180 / Math.PI);
             currentBearing = Math.round(((tangent % 360) + 360) % 360);
-            
             bearingSlider.value = currentBearing;
             bearingVal.textContent = `${currentBearing}° ${getCardinalDirection(currentBearing)}`;
-            currentSpeed = Math.round(55 + Math.sin(simAngle * 3) * 15);
+            currentSpeed = Math.round(65 + Math.sin(simAngle * 3) * 15);
             speedSlider.value = currentSpeed;
             speedVal.textContent = `${currentSpeed} km/h`;
-
             pushHassUpdate();
           }, 200);
         } else {
@@ -606,10 +631,8 @@ show_hud: ${cardConfig.show_hud}`;
         }
       });
 
-      // 360 Spin Test
       const spinBtn = document.getElementById('spin-test-btn');
       spinBtn.addEventListener('click', () => {
-        // Toggle between 355 deg and 10 deg to demonstrate smooth shortest path rotation without backspin
         currentBearing = currentBearing === 355 ? 10 : 355;
         bearingSlider.value = currentBearing;
         bearingVal.textContent = `${currentBearing}° ${getCardinalDirection(currentBearing)}`;

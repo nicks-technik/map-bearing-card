@@ -1,14 +1,24 @@
 import { MapBearingCardConfig } from './types';
 
-export const CARD_VERSION = '1.0.0';
+export const CARD_VERSION = '1.1.0';
 export const CARD_TAG = 'map-bearing-card';
 export const CARD_EDITOR_TAG = 'map-bearing-card-editor';
 
+export const XPENG_COLOR_PRESETS = [
+  { name: 'Fiery Orange (G6 Hero)', hex: '#ea580c' },
+  { name: 'Arctic White', hex: '#f8fafc' },
+  { name: 'Graphite Gray', hex: '#4b5563' },
+  { name: 'Silver Frost', hex: '#94a3b8' },
+  { name: 'Midnight Obsidian', hex: '#0f172a' },
+  { name: 'Nebula Green', hex: '#059669' },
+  { name: 'Starry Blue', hex: '#0284c7' },
+];
+
 export const DEFAULT_CONFIG: Partial<MapBearingCardConfig> = {
   type: `custom:${CARD_TAG}`,
-  vehicle_type: 'car',
-  vehicle_color: '#1e88e5',
-  vehicle_size: 46,
+  vehicle_type: 'xpeng_g6',
+  vehicle_color: '#ea580c',
+  vehicle_size: 48,
   show_bearing_cone: true,
   show_accuracy: true,
   map_provider: 'auto',
@@ -16,16 +26,19 @@ export const DEFAULT_CONFIG: Partial<MapBearingCardConfig> = {
   default_zoom: 16,
   min_zoom: 3,
   max_zoom: 19,
-  card_height: '380px',
+  card_height: '400px',
   follow_vehicle: true,
   recenter_button: true,
-  rotate_with_bearing: false,
+  heads_up_mode: false,
   show_zones: true,
   show_hud: true,
   show_speed: true,
   show_bearing: true,
   show_battery: true,
+  show_range: true,
+  show_charging: true,
   show_last_updated: true,
+  show_fix_age: true,
   show_address: true,
   bearing_offset: 0,
 };

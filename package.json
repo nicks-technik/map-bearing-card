@@ -1,6 +1,6 @@
 {
   "name": "map-bearing-card",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Home Assistant Lovelace card displaying a map with a vehicle rotated to its heading/bearing",
   "main": "dist/map-bearing-card.js",
   "module": "dist/map-bearing-card.js",

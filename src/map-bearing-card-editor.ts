@@ -1,7 +1,7 @@
 import { LitElement, html, css, PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { HomeAssistant, MapBearingCardConfig, VehicleType, MapProvider } from './types';
-import { DEFAULT_CONFIG } from './const';
+import { DEFAULT_CONFIG, XPENG_COLOR_PRESETS } from './const';
 
 export class MapBearingCardEditor extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -52,6 +52,22 @@ export class MapBearingCardEditor extends LitElement {
     this.dispatchEvent(event);
   }
 
+  private _selectColorPreset(hex: string): void {
+    if (!this._config) return;
+    const newConfig: MapBearingCardConfig = {
+      ...this._config,
+      vehicle_color: hex,
+    };
+    this._config = newConfig;
+
+    const event = new CustomEvent('config-changed', {
+      bubbles: true,
+      composed: true,
+      detail: { config: newConfig },
+    });
+    this.dispatchEvent(event);
+  }
+
   protected render() {
     if (!this.hass || !this._config) {
       return html``;
@@ -61,12 +77,16 @@ export class MapBearingCardEditor extends LitElement {
     const trackerEntities = entities.filter(
       (eid) => eid.startsWith('device_tracker.') || eid.startsWith('sensor.') || eid.startsWith('person.')
     );
+    const sensorEntities = entities.filter(
+      (eid) => eid.startsWith('sensor.') || eid.startsWith('binary_sensor.')
+    );
 
     const vehicleTypes: { value: VehicleType; label: string }[] = [
-      { value: 'car', label: 'Modern Sedan / EV' },
-      { value: 'sports_car', label: 'Sports Car (GT)' },
-      { value: 'suv', label: 'SUV / Crossover' },
-      { value: 'truck', label: 'Truck / Van' },
+      { value: 'xpeng_g6', label: 'XPENG G6 Coupe-SUV (Robot Face LED & Fastback)' },
+      { value: 'car', label: 'Modern Aerodynamic Sedan / EV' },
+      { value: 'sports_car', label: 'Sports Car (GT Aero)' },
+      { value: 'suv', label: 'Standard SUV / Crossover' },
+      { value: 'truck', label: 'Pickup Truck / Van' },
       { value: 'arrow', label: 'Navigation Arrow / Chevron' },
       { value: 'pointer', label: 'Compass Pointer' },
       { value: 'custom', label: 'Custom Image URL' },
@@ -74,8 +94,8 @@ export class MapBearingCardEditor extends LitElement {
 
     const mapProviders: { value: MapProvider; label: string }[] = [
       { value: 'auto', label: 'Auto (Matches HA Dark/Light Theme)' },
-      { value: 'carto_light', label: 'CartoDB Positron (Light)' },
       { value: 'carto_dark', label: 'CartoDB Dark Matter (Dark)' },
+      { value: 'carto_light', label: 'CartoDB Positron (Light)' },
       { value: 'osm', label: 'OpenStreetMap Standard' },
       { value: 'satellite', label: 'Satellite (Esri Imagery)' },
       { value: 'opentopo', label: 'OpenTopoMap (Topographic)' },
@@ -84,22 +104,22 @@ export class MapBearingCardEditor extends LitElement {
 
     return html`
       <div class="card-config">
-        <!-- Main Entity Selection -->
+        <!-- Main Vehicle Entity Selection -->
         <div class="config-section">
           <div class="section-title">Vehicle & Location</div>
 
           <div class="form-row">
-            <label class="form-label" for="entity-select">Vehicle Entity (required)</label>
+            <label class="form-label" for="entity-select">Vehicle Location Entity (required)</label>
             <input
               id="entity-select"
-              list="entities-list"
+              list="tracker-list"
               class="form-input"
               data-config-key="entity"
               .value=${this._config.entity || ''}
               @change=${this._valueChanged}
-              placeholder="e.g. device_tracker.tesla_model_y"
+              placeholder="e.g. device_tracker.xpeng_g6_location"
             />
-            <datalist id="entities-list">
+            <datalist id="tracker-list">
               ${trackerEntities.map((eid) => html`<option value=${eid}></option>`)}
             </datalist>
           </div>
@@ -112,7 +132,7 @@ export class MapBearingCardEditor extends LitElement {
               data-config-key="title"
               .value=${this._config.title || ''}
               @change=${this._valueChanged}
-              placeholder="Friendly vehicle name"
+              placeholder="e.g. XPENG G6"
             />
           </div>
 
@@ -121,13 +141,16 @@ export class MapBearingCardEditor extends LitElement {
               <label class="form-label" for="bearing-entity">Bearing Entity (optional)</label>
               <input
                 id="bearing-entity"
-                list="entities-list"
+                list="sensor-list"
                 class="form-input"
                 data-config-key="bearing_entity"
                 .value=${this._config.bearing_entity || ''}
                 @change=${this._valueChanged}
-                placeholder="sensor.car_heading"
+                placeholder="Auto-detected from course/bearing"
               />
+              <datalist id="sensor-list">
+                ${sensorEntities.map((eid) => html`<option value=${eid}></option>`)}
+              </datalist>
             </div>
 
             <div class="form-row">
@@ -145,45 +168,82 @@ export class MapBearingCardEditor extends LitElement {
           </div>
         </div>
 
-        <!-- Vehicle Appearance -->
+        <!-- Vehicle Model & XPENG Color Presets -->
         <div class="config-section">
-          <div class="section-title">Vehicle Styling</div>
+          <div class="section-title">Vehicle Model & Styling</div>
+
+          <div class="form-row">
+            <label class="form-label" for="vehicle-type">Vehicle Model</label>
+            <select
+              id="vehicle-type"
+              class="form-select"
+              data-config-key="vehicle_type"
+              .value=${this._config.vehicle_type || 'xpeng_g6'}
+              @change=${this._valueChanged}
+            >
+              ${vehicleTypes.map(
+                (vt) => html`<option value=${vt.value} ?selected=${this._config?.vehicle_type === vt.value}>${vt.label}</option>`
+              )}
+            </select>
+          </div>
+
+          <!-- XPENG Color Presets -->
+          <div class="form-row">
+            <label class="form-label">XPENG Factory Colors</label>
+            <div class="preset-chips">
+              ${XPENG_COLOR_PRESETS.map(
+                (p) => html`
+                  <button
+                    type="button"
+                    class="preset-chip ${this._config?.vehicle_color === p.hex ? 'selected' : ''}"
+                    @click=${() => this._selectColorPreset(p.hex)}
+                    title="${p.name}"
+                  >
+                    <span class="chip-color" style="background-color: ${p.hex};"></span>
+                    <span>${p.name.split(' ')[0]}</span>
+                  </button>
+                `
+              )}
+            </div>
+          </div>
 
           <div class="form-grid-2">
             <div class="form-row">
-              <label class="form-label" for="vehicle-type">Vehicle Model</label>
-              <select
-                id="vehicle-type"
-                class="form-select"
-                data-config-key="vehicle_type"
-                .value=${this._config.vehicle_type || 'car'}
-                @change=${this._valueChanged}
-              >
-                ${vehicleTypes.map(
-                  (vt) => html`<option value=${vt.value} ?selected=${this._config?.vehicle_type === vt.value}>${vt.label}</option>`
-                )}
-              </select>
-            </div>
-
-            <div class="form-row">
-              <label class="form-label" for="vehicle-color">Vehicle Color</label>
+              <label class="form-label" for="vehicle-color">Custom Vehicle Color</label>
               <div class="color-picker-wrap">
                 <input
                   id="vehicle-color"
                   type="color"
                   class="color-input"
                   data-config-key="vehicle_color"
-                  .value=${this._config.vehicle_color || '#1e88e5'}
+                  .value=${this._config.vehicle_color || '#ea580c'}
                   @input=${this._valueChanged}
                 />
                 <input
                   type="text"
                   class="form-input color-hex-text"
                   data-config-key="vehicle_color"
-                  .value=${this._config.vehicle_color || '#1e88e5'}
+                  .value=${this._config.vehicle_color || '#ea580c'}
                   @change=${this._valueChanged}
                 />
               </div>
+            </div>
+
+            <div class="form-row">
+              <label class="form-label" for="vehicle-size">
+                Vehicle Size: <strong>${this._config.vehicle_size || 48}px</strong>
+              </label>
+              <input
+                id="vehicle-size"
+                type="range"
+                min="28"
+                max="80"
+                step="2"
+                class="form-range"
+                data-config-key="vehicle_size"
+                .value=${this._config.vehicle_size || 48}
+                @input=${this._valueChanged}
+              />
             </div>
           </div>
 
@@ -202,42 +262,72 @@ export class MapBearingCardEditor extends LitElement {
                 </div>
               `
             : ''}
+        </div>
+
+        <!-- EV Telemetry Sensors (XPENG) -->
+        <div class="config-section">
+          <div class="section-title">XPENG & EV Telemetry Sensors</div>
 
           <div class="form-grid-2">
             <div class="form-row">
-              <label class="form-label" for="vehicle-size">
-                Vehicle Size: <strong>${this._config.vehicle_size || 46}px</strong>
-              </label>
+              <label class="form-label" for="battery-entity">Battery SOC Entity</label>
               <input
-                id="vehicle-size"
-                type="range"
-                min="24"
-                max="80"
-                step="2"
-                class="form-range"
-                data-config-key="vehicle_size"
-                .value=${this._config.vehicle_size || 46}
-                @input=${this._valueChanged}
+                id="battery-entity"
+                list="sensor-list"
+                class="form-input"
+                data-config-key="battery_entity"
+                .value=${this._config.battery_entity || ''}
+                @change=${this._valueChanged}
+                placeholder="Auto (sensor.*_battery_soc)"
               />
             </div>
 
             <div class="form-row">
-              <label class="form-label" for="card-height">Card Height</label>
+              <label class="form-label" for="range-entity">Remaining Range Entity</label>
               <input
-                id="card-height"
+                id="range-entity"
+                list="sensor-list"
                 class="form-input"
-                data-config-key="card_height"
-                .value=${this._config.card_height || '380px'}
+                data-config-key="range_entity"
+                .value=${this._config.range_entity || ''}
                 @change=${this._valueChanged}
-                placeholder="380px"
+                placeholder="Auto (sensor.*_range)"
+              />
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-row">
+              <label class="form-label" for="speed-entity">Speed Entity</label>
+              <input
+                id="speed-entity"
+                list="sensor-list"
+                class="form-input"
+                data-config-key="speed_entity"
+                .value=${this._config.speed_entity || ''}
+                @change=${this._valueChanged}
+                placeholder="Auto from location entity"
+              />
+            </div>
+
+            <div class="form-row">
+              <label class="form-label" for="charging-entity">Charging State Entity</label>
+              <input
+                id="charging-entity"
+                list="sensor-list"
+                class="form-input"
+                data-config-key="charging_entity"
+                .value=${this._config.charging_entity || ''}
+                @change=${this._valueChanged}
+                placeholder="Auto (binary_sensor.*_charging)"
               />
             </div>
           </div>
         </div>
 
-        <!-- Map Settings -->
+        <!-- Map & Navigation Settings -->
         <div class="config-section">
-          <div class="section-title">Map Settings</div>
+          <div class="section-title">Map & Navigation</div>
 
           <div class="form-grid-2">
             <div class="form-row">
@@ -271,13 +361,35 @@ export class MapBearingCardEditor extends LitElement {
               />
             </div>
           </div>
+
+          <div class="form-row">
+            <label class="form-label" for="card-height">Card Height</label>
+            <input
+              id="card-height"
+              class="form-input"
+              data-config-key="card_height"
+              .value=${this._config.card_height || '400px'}
+              @change=${this._valueChanged}
+              placeholder="400px"
+            />
+          </div>
         </div>
 
-        <!-- Toggles & Features -->
+        <!-- Display Toggles -->
         <div class="config-section">
-          <div class="section-title">Display Options</div>
+          <div class="section-title">Display & Feature Options</div>
 
           <div class="toggle-grid">
+            <label class="toggle-item">
+              <input
+                type="checkbox"
+                data-config-key="heads_up_mode"
+                ?checked=${this._config.heads_up_mode === true}
+                @change=${this._valueChanged}
+              />
+              <span>Heads-Up Navigation Mode (Rotate map with car heading)</span>
+            </label>
+
             <label class="toggle-item">
               <input
                 type="checkbox"
@@ -285,7 +397,7 @@ export class MapBearingCardEditor extends LitElement {
                 ?checked=${this._config.show_bearing_cone !== false}
                 @change=${this._valueChanged}
               />
-              <span>Directional Beam (Cone of Sight)</span>
+              <span>Directional Beam (Headlight Cone)</span>
             </label>
 
             <label class="toggle-item">
@@ -305,7 +417,7 @@ export class MapBearingCardEditor extends LitElement {
                 ?checked=${this._config.follow_vehicle !== false}
                 @change=${this._valueChanged}
               />
-              <span>Auto-Follow Vehicle</span>
+              <span>Auto-Follow Vehicle When Moving</span>
             </label>
 
             <label class="toggle-item">
@@ -335,7 +447,17 @@ export class MapBearingCardEditor extends LitElement {
                 ?checked=${this._config.show_hud !== false}
                 @change=${this._valueChanged}
               />
-              <span>HUD Overlay (Speed, Compass, State)</span>
+              <span>HUD Overlay Panel (Speed, Battery, Range, State)</span>
+            </label>
+
+            <label class="toggle-item">
+              <input
+                type="checkbox"
+                data-config-key="show_fix_age"
+                ?checked=${this._config.show_fix_age !== false}
+                @change=${this._valueChanged}
+              />
+              <span>Show GPS Fix Freshness When Parked (e.g. Fix 12m ago)</span>
             </label>
           </div>
         </div>
@@ -356,7 +478,7 @@ export class MapBearingCardEditor extends LitElement {
     .config-section {
       background: var(--card-background-color, rgba(255, 255, 255, 0.04));
       border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.08));
-      border-radius: 8px;
+      border-radius: 10px;
       padding: 14px;
       display: flex;
       flex-direction: column;
@@ -364,9 +486,11 @@ export class MapBearingCardEditor extends LitElement {
     }
 
     .section-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--primary-color, #1e88e5);
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--primary-color, #ea580c);
       border-bottom: 1px solid var(--divider-color, rgba(255, 255, 255, 0.08));
       padding-bottom: 6px;
       margin-bottom: 4px;
@@ -375,7 +499,7 @@ export class MapBearingCardEditor extends LitElement {
     .form-row {
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 5px;
     }
 
     .form-grid-2 {
@@ -392,7 +516,7 @@ export class MapBearingCardEditor extends LitElement {
 
     .form-label {
       font-size: 12px;
-      font-weight: 500;
+      font-weight: 600;
       color: var(--secondary-text-color, #64748b);
     }
 
@@ -400,7 +524,7 @@ export class MapBearingCardEditor extends LitElement {
     .form-select {
       background: var(--input-idle-line-color, rgba(255, 255, 255, 0.08));
       border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.15));
-      border-radius: 6px;
+      border-radius: 8px;
       padding: 8px 10px;
       font-size: 13px;
       color: var(--primary-text-color, inherit);
@@ -410,7 +534,46 @@ export class MapBearingCardEditor extends LitElement {
 
     .form-input:focus,
     .form-select:focus {
-      border-color: var(--primary-color, #1e88e5);
+      border-color: var(--primary-color, #ea580c);
+    }
+
+    .preset-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .preset-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 9px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+      color: var(--primary-text-color, inherit);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .preset-chip:hover {
+      background: rgba(255, 255, 255, 0.12);
+      transform: translateY(-1px);
+    }
+
+    .preset-chip.selected {
+      border-color: var(--primary-color, #ea580c);
+      background: rgba(234, 88, 12, 0.15);
+    }
+
+    .chip-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.3);
     }
 
     .color-picker-wrap {
@@ -434,14 +597,14 @@ export class MapBearingCardEditor extends LitElement {
     }
 
     .form-range {
-      accent-color: var(--primary-color, #1e88e5);
+      accent-color: var(--primary-color, #ea580c);
       cursor: pointer;
     }
 
     .toggle-grid {
       display: grid;
       grid-template-columns: 1fr;
-      gap: 8px;
+      gap: 9px;
     }
 
     .toggle-item {
@@ -454,7 +617,7 @@ export class MapBearingCardEditor extends LitElement {
     }
 
     .toggle-item input[type='checkbox'] {
-      accent-color: var(--primary-color, #1e88e5);
+      accent-color: var(--primary-color, #ea580c);
       width: 16px;
       height: 16px;
       cursor: pointer;
