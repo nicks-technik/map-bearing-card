@@ -5196,7 +5196,7 @@ var B = /* @__PURE__ */ u(at(), 1), ot = ".leaflet-pane,.leaflet-tile,.leaflet-m
 			maxZoom: 20
 		},
 		osm: {
-			url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+			url: "https://tile.openstreetmap.de/{z}/{x}/{y}.png",
 			attribution: "&copy; <a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors",
 			maxZoom: 19
 		},
@@ -6591,7 +6591,10 @@ var J = class extends He {
 		n && t.url && (t.url.includes("{apikey}") || t.url.includes("{key}") ? t = {
 			...t,
 			url: t.url.replace("{apikey}", n).replace("{key}", n)
-		} : e !== "carto_light" && e !== "carto_dark" && e !== "auto" || !t.url.includes("cartocdn.com") || t.url.includes("api_key=") || t.url.includes("access_token=") || (t = {
+		} : (e === "carto_light" || e === "carto_dark") && t.url.includes("cartocdn.com") ? !t.url.includes("api_key=") && !t.url.includes("access_token=") && (t = {
+			...t,
+			url: t.url.includes("?") ? `${t.url}&api_key=${encodeURIComponent(n)}` : `${t.url}?api_key=${encodeURIComponent(n)}`
+		}) : e === "custom" && t.url && !t.url.includes("api_key=") && !t.url.includes("access_token=") && (t = {
 			...t,
 			url: t.url.includes("?") ? `${t.url}&api_key=${encodeURIComponent(n)}` : `${t.url}?api_key=${encodeURIComponent(n)}`
 		}));

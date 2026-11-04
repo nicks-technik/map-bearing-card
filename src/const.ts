@@ -66,7 +66,7 @@ export const TILE_LAYERS: Record<string, TileLayerDef> = {
     maxZoom: 20,
   },
   osm: {
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    url: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     maxZoom: 19,
   },

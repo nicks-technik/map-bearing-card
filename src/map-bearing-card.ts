@@ -242,8 +242,15 @@ export class MapBearingCard extends LitElement {
           ...tileDef,
           url: tileDef.url.replace('{apikey}', apiKey).replace('{key}', apiKey),
         };
-      } else if ((provider === 'carto_light' || provider === 'carto_dark' || provider === 'auto') && tileDef.url.includes('cartocdn.com')) {
+      } else if ((provider === 'carto_light' || provider === 'carto_dark') && tileDef.url.includes('cartocdn.com')) {
         // Carto may require API key in some setups; append as query param if needed
+        if (!tileDef.url.includes('api_key=') && !tileDef.url.includes('access_token=')) {
+          tileDef = {
+            ...tileDef,
+            url: tileDef.url.includes('?') ? `${tileDef.url}&api_key=${encodeURIComponent(apiKey)}` : `${tileDef.url}?api_key=${encodeURIComponent(apiKey)}`,
+          };
+        }
+      } else if (provider === 'custom' && tileDef.url) {
         if (!tileDef.url.includes('api_key=') && !tileDef.url.includes('access_token=')) {
           tileDef = {
             ...tileDef,
