@@ -237,24 +237,32 @@ export class MapBearingCard extends LitElement {
     // Inject API key if provided
     const apiKey = this._config.tile_api_key || this._config.api_key;
     if (apiKey && tileDef.url) {
-      if (tileDef.url.includes('{apikey}') || tileDef.url.includes('{key}')) {
+      if (tileDef.url.includes('{apikey}') || tileDef.url.includes('{key}') || tileDef.url.includes('{access_token}')) {
         tileDef = {
           ...tileDef,
-          url: tileDef.url.replace('{apikey}', apiKey).replace('{key}', apiKey),
+          url: tileDef.url
+            .replace('{apikey}', encodeURIComponent(apiKey))
+            .replace('{key}', encodeURIComponent(apiKey))
+            .replace('{access_token}', encodeURIComponent(apiKey)),
         };
-      } else if ((provider === 'carto_light' || provider === 'carto_dark') && tileDef.url.includes('cartocdn.com')) {
-        // Carto may require API key in some setups; append as query param if needed
+      } else if (
+        tileDef.url.includes('cartocdn.com') ||
+        provider === 'carto_light' ||
+        provider === 'carto_dark'
+      ) {
         if (!tileDef.url.includes('api_key=') && !tileDef.url.includes('access_token=')) {
+          const sep = tileDef.url.includes('?') ? '&' : '?';
           tileDef = {
             ...tileDef,
-            url: tileDef.url.includes('?') ? `${tileDef.url}&api_key=${encodeURIComponent(apiKey)}` : `${tileDef.url}?api_key=${encodeURIComponent(apiKey)}`,
+            url: `${tileDef.url}${sep}api_key=${encodeURIComponent(apiKey)}&access_token=${encodeURIComponent(apiKey)}`,
           };
         }
       } else if (provider === 'custom' && tileDef.url) {
         if (!tileDef.url.includes('api_key=') && !tileDef.url.includes('access_token=')) {
+          const sep = tileDef.url.includes('?') ? '&' : '?';
           tileDef = {
             ...tileDef,
-            url: tileDef.url.includes('?') ? `${tileDef.url}&api_key=${encodeURIComponent(apiKey)}` : `${tileDef.url}?api_key=${encodeURIComponent(apiKey)}`,
+            url: `${tileDef.url}${sep}api_key=${encodeURIComponent(apiKey)}&access_token=${encodeURIComponent(apiKey)}`,
           };
         }
       }
