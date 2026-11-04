@@ -75,12 +75,25 @@ export class MapBearingCard extends LitElement {
       ...config,
     };
     this._headsUpMode = !!this._config.heads_up_mode;
+
+    // If map already exists, update tile layer and height
+    if (this._map) {
+      this._updateTileLayer();
+      requestAnimationFrame(() => this._map?.invalidateSize());
+    }
   }
 
   public connectedCallback(): void {
     super.connectedCallback();
     if (this._map) {
       requestAnimationFrame(() => this._map?.invalidateSize());
+      setTimeout(() => this._map?.invalidateSize(), 250);
+    } else {
+      requestAnimationFrame(() => {
+        if (!this._map && this.shadowRoot?.querySelector('#map')) {
+          this._initMap();
+        }
+      });
     }
   }
 
@@ -103,6 +116,11 @@ export class MapBearingCard extends LitElement {
 
   protected updated(changedProperties: PropertyValues): void {
     super.updated(changedProperties);
+
+    // Guaranteed initialization if element wasn't ready during firstUpdated
+    if (!this._map && this.shadowRoot?.querySelector('#map')) {
+      this._initMap();
+    }
 
     if (changedProperties.has('hass') && this.hass && this._config) {
       this._updateVehicleFromHass();
@@ -152,9 +170,9 @@ export class MapBearingCard extends LitElement {
     const mapEl = this.shadowRoot?.querySelector('#map') as HTMLElement;
     if (!mapEl || this._map) return;
 
-    const initialZoom = this._config.default_zoom || 16;
-    const minZoom = this._config.min_zoom || 3;
-    const maxZoom = this._config.max_zoom || 19;
+    const initialZoom = this._config?.default_zoom || 16;
+    const minZoom = this._config?.min_zoom || 3;
+    const maxZoom = this._config?.max_zoom || 19;
 
     this._map = L.map(mapEl, {
       zoomControl: false,
@@ -182,10 +200,20 @@ export class MapBearingCard extends LitElement {
       this._map.setView([51.505, -0.09], initialZoom);
     }
 
+    // Double invalidateSize on layout settle
     requestAnimationFrame(() => {
-      this._map?.invalidateSize();
-      this._renderMapElements();
+      if (this._map) {
+        this._map.invalidateSize();
+        this._renderMapElements();
+      }
     });
+
+    setTimeout(() => {
+      if (this._map) {
+        this._map.invalidateSize();
+        this._renderMapElements();
+      }
+    }, 200);
   }
 
   private _updateTileLayer(): void {
@@ -217,7 +245,7 @@ export class MapBearingCard extends LitElement {
 
     this._tileLayer = L.tileLayer(tileDef.url, {
       attribution: tileDef.attribution,
-      subdomains: tileDef.subdomains || ['abc'],
+      subdomains: tileDef.subdomains || ['a', 'b', 'c', 'd'],
       maxZoom: tileDef.maxZoom || 19,
     }).addTo(this._map);
 
@@ -264,7 +292,7 @@ export class MapBearingCard extends LitElement {
       const hours = this._config.history_trail?.hours_to_show || 2;
       const startTime = new Date(Date.now() - hours * 3600 * 1000).toISOString();
       const endpoint = `history/period/${startTime}?filter_entity_id=${this._config.entity}&minimal_response&significant_changes_only=0`;
-      
+
       const historyData = await this.hass.callApi<any[]>('GET', endpoint);
       if (Array.isArray(historyData) && historyData.length > 0 && Array.isArray(historyData[0])) {
         const points: [number, number][] = [];
@@ -286,7 +314,12 @@ export class MapBearingCard extends LitElement {
   }
 
   private _renderMapElements(): void {
-    if (!this._map || !this._vehicleState || !this._hasValidCoords) return;
+    if (!this._map) {
+      this._initMap();
+      if (!this._map) return;
+    }
+
+    if (!this._vehicleState || !this._hasValidCoords) return;
 
     const { latitude, longitude, bearing, accuracy, isMoving } = this._vehicleState;
     if (latitude === null || longitude === null) return;
@@ -301,14 +334,10 @@ export class MapBearingCard extends LitElement {
     const smoothAngle = unwrapAngle(targetBearing, this._lastRotatedAngle);
     this._lastRotatedAngle = smoothAngle;
 
-    // If Heads-Up mode active, rotate the map so vehicle faces UP
-    const mapRotator = this.shadowRoot?.querySelector('#map-rotator') as HTMLElement;
-    if (mapRotator) {
-      if (this._headsUpMode) {
-        mapRotator.style.transform = `rotate(${-smoothAngle}deg)`;
-      } else {
-        mapRotator.style.transform = 'none';
-      }
+    // Heads-Up Mode: disabled transform to avoid breaking Leaflet rendering
+    const mapEl = this.shadowRoot?.querySelector('#map') as HTMLElement;
+    if (mapEl) {
+      mapEl.style.transform = 'none';
     }
 
     // Vehicle SVG markup
@@ -324,7 +353,7 @@ export class MapBearingCard extends LitElement {
       ? renderDirectionalBeam(this._config.cone_color || vehicleColor, 0.38, !isMoving)
       : '';
 
-    // If Heads-Up mode is active, vehicle rotator stays 0 (pointing UP on screen)
+    // If Heads-Up mode active, vehicle rotator stays 0 (pointing UP on screen)
     const markerRotation = this._headsUpMode ? 0 : smoothAngle;
 
     const iconHtml = `
@@ -474,10 +503,7 @@ export class MapBearingCard extends LitElement {
     return html`
       <ha-card class="map-bearing-card">
         <div id="map-container" style="height: ${height};">
-          <!-- Inner wrapper that rotates when Heads-Up mode is active -->
-          <div id="map-rotator" class="${this._headsUpMode ? 'heads-up-active' : ''}">
-            <div id="map"></div>
-          </div>
+          <div id="map"></div>
 
           ${!this._hasValidCoords
             ? html`
@@ -641,20 +667,7 @@ export class MapBearingCard extends LitElement {
         position: relative;
         width: 100%;
         overflow: hidden;
-        background-color: var(--primary-background-color, #0f172a);
-      }
-
-      #map-rotator {
-        position: absolute;
-        inset: -50%;
-        width: 200%;
-        height: 200%;
-        transform-origin: center center;
-        transition: transform 0.45s cubic-bezier(0.25, 1, 0.5, 1);
-      }
-
-      #map-rotator.heads-up-active {
-        will-change: transform;
+        background-color: var(--primary-background-color, #1e293b);
       }
 
       #map {
@@ -663,7 +676,11 @@ export class MapBearingCard extends LitElement {
         bottom: 0;
         left: 0;
         right: 0;
+        width: 100%;
+        height: 100%;
         z-index: 1;
+        transform-origin: center center;
+        transition: transform 0.45s cubic-bezier(0.25, 1, 0.5, 1);
       }
 
       /* Vehicle Marker Styles */
