@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { background: #0f172a; margin: 0; padding: 20px; color: white; }
+  </style>
+  <script type="module" src="/dist/map-bearing-card.js"></script>
+</head>
+<body>
+  <h1>Test Map Bearing Card</h1>
+  <div style="width: 500px; height: 420px; border: 1px solid red; position: relative;">
+    <map-bearing-card id="card"></map-bearing-card>
+  </div>
+
+  <div id="logs" style="margin-top: 20px; font-family: monospace; white-space: pre;"></div>
+
+  <script type="module">
+    const logs = document.getElementById('logs');
+    window.addEventListener('error', (e) => {
+      logs.textContent += '\nError: ' + e.message + ' at ' + e.filename + ':' + e.lineno;
+    });
+
+    try {
+      const card = document.getElementById('card');
+      card.setConfig({
+        type: 'custom:map-bearing-card',
+        entity: 'device_tracker.xpeng_g6_location',
+      });
+      card.hass = {
+        states: {
+          'device_tracker.xpeng_g6_location': {
+            entity_id: 'device_tracker.xpeng_g6_location',
+            state: 'driving',
+            attributes: {
+              latitude: 48.1371,
+              longitude: 11.5761,
+              course: 142.0,
+              speed: 84.5,
+              battery_soc: 74,
+            },
+            last_changed: new Date().toISOString(),
+            last_updated: new Date().toISOString(),
+          }
+        },
+        themes: { darkMode: true },
+        callService: async () => {},
+      };
+      logs.textContent += 'Card configured successfully.\n';
+    } catch (err) {
+      logs.textContent += 'Exception: ' + err.stack + '\n';
+    }
+  </script>
+</body>
+</html>
