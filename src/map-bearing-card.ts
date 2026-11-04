@@ -224,14 +224,14 @@ export class MapBearingCard extends LitElement {
 
     if (provider === 'auto') {
       const dark = this._isDarkMode();
-      tileDef = dark ? TILE_LAYERS.carto_dark : TILE_LAYERS.carto_light;
+      tileDef = dark ? TILE_LAYERS.carto_dark : TILE_LAYERS.osm;
     } else if (provider === 'custom' && this._config.tile_url) {
       tileDef = {
         url: this._config.tile_url,
         attribution: this._config.tile_attribution || '',
       };
     } else {
-      tileDef = TILE_LAYERS[provider] || TILE_LAYERS.carto_light;
+      tileDef = TILE_LAYERS[provider] || TILE_LAYERS.osm;
     }
 
     const tileKey = `${provider}-${tileDef.url}`;
