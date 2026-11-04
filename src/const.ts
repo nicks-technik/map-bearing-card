@@ -1,6 +1,6 @@
 import { MapBearingCardConfig } from './types';
 
-export const CARD_VERSION = '1.1.0';
+export const CARD_VERSION = '1.1.2';
 export const CARD_TAG = 'map-bearing-card';
 export const CARD_EDITOR_TAG = 'map-bearing-card-editor';
 
