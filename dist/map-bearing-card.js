@@ -6593,19 +6593,19 @@ var J = class extends He {
 				...t,
 				url: t.url.replace("{apikey}", encodeURIComponent(n)).replace("{key}", encodeURIComponent(n)).replace("{access_token}", encodeURIComponent(n))
 			};
-			else if (t.url.includes("cartocdn.com") || e === "carto_light" || e === "carto_dark") {
-				if (!t.url.includes("api_key=") && !t.url.includes("access_token=")) {
+			else if (t.url.includes("cartocdn.com")) {
+				if (!t.url.includes("key=")) {
 					let e = t.url.includes("?") ? "&" : "?";
 					t = {
 						...t,
-						url: `${t.url}${e}api_key=${encodeURIComponent(n)}&access_token=${encodeURIComponent(n)}`
+						url: `${t.url}${e}key=${encodeURIComponent(n)}`
 					};
 				}
-			} else if (e === "custom" && t.url && !t.url.includes("api_key=") && !t.url.includes("access_token=")) {
+			} else if (e === "custom" && t.url && !t.url.includes("key=") && !t.url.includes("api_key=") && !t.url.includes("access_token=")) {
 				let e = t.url.includes("?") ? "&" : "?";
 				t = {
 					...t,
-					url: `${t.url}${e}api_key=${encodeURIComponent(n)}&access_token=${encodeURIComponent(n)}`
+					url: `${t.url}${e}key=${encodeURIComponent(n)}`
 				};
 			}
 		}

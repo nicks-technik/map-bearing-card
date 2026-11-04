@@ -245,24 +245,21 @@ export class MapBearingCard extends LitElement {
             .replace('{key}', encodeURIComponent(apiKey))
             .replace('{access_token}', encodeURIComponent(apiKey)),
         };
-      } else if (
-        tileDef.url.includes('cartocdn.com') ||
-        provider === 'carto_light' ||
-        provider === 'carto_dark'
-      ) {
-        if (!tileDef.url.includes('api_key=') && !tileDef.url.includes('access_token=')) {
+      } else if (tileDef.url.includes('cartocdn.com')) {
+        // Carto uses ?key=...
+        if (!tileDef.url.includes('key=')) {
           const sep = tileDef.url.includes('?') ? '&' : '?';
           tileDef = {
             ...tileDef,
-            url: `${tileDef.url}${sep}api_key=${encodeURIComponent(apiKey)}&access_token=${encodeURIComponent(apiKey)}`,
+            url: `${tileDef.url}${sep}key=${encodeURIComponent(apiKey)}`,
           };
         }
       } else if (provider === 'custom' && tileDef.url) {
-        if (!tileDef.url.includes('api_key=') && !tileDef.url.includes('access_token=')) {
+        if (!tileDef.url.includes('key=') && !tileDef.url.includes('api_key=') && !tileDef.url.includes('access_token=')) {
           const sep = tileDef.url.includes('?') ? '&' : '?';
           tileDef = {
             ...tileDef,
-            url: `${tileDef.url}${sep}api_key=${encodeURIComponent(apiKey)}&access_token=${encodeURIComponent(apiKey)}`,
+            url: `${tileDef.url}${sep}key=${encodeURIComponent(apiKey)}`,
           };
         }
       }
