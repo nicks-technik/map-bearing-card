@@ -1,7 +1,7 @@
 # 🧭 Map Bearing Card for Home Assistant (XPENG & EV Edition)
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/default)
-[![GitHub release](https://img.shields.io/badge/release-v1.1.0-orange.svg)](https://github.com/nicks-technik/map-bearing-card)
+[![GitHub release](https://img.shields.io/badge/release-v1.1.2-orange.svg)](https://github.com/nicks-technik/map-bearing-card)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=nicks-technik&repository=map-bearing-card&category=plugin)
 
