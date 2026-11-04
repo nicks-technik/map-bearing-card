@@ -189,3 +189,22 @@ card_height: 440px
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## ?? Map Tile API Key (Carto)
+
+If you use Carto tiles and your provider requires an API key (e.g. Carto requires authentication in some setups), you can add it in two ways:
+
+### Via UI (Card Editor)
+1. Edit the card ? Map & Navigation ? Tile API Key
+2. Paste your API key from carto.com
+3. Set Map Provider to CartoDB Light, CartoDB Dark, or Auto as desired
+
+### Via YAML
+`yaml
+type: custom:map-bearing-card
+entity: device_tracker.your_vehicle
+map_provider: carto_light
+tile_api_key: YOUR_CARTO_API_KEY
+`
+The card also accepts pi_key as an alternative key name.
+
+> Note: OpenStreetMap tiles work without an API key. If you see "API KEY Required", switch to map_provider: osm or add your Carto key.

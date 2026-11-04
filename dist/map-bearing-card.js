@@ -5152,6 +5152,8 @@ var B = /* @__PURE__ */ u(at(), 1), ot = ".leaflet-pane,.leaflet-tile,.leaflet-m
 		show_accuracy: !0,
 		map_provider: "auto",
 		dark_mode: "auto",
+		tile_api_key: "",
+		api_key: "",
 		default_zoom: 16,
 		min_zoom: 3,
 		max_zoom: 19,
@@ -6219,19 +6221,19 @@ var Ft = o((() => {})), It = /* @__PURE__ */ c({ MapBearingCardEditor: () => Lt 
             </div>
 
             <div class="form-row">
-              <label class="form-label" for="zoom-slider">
-                Default Zoom: <strong>${this._config.default_zoom || 16}</strong>
-              </label>
+              <label class="form-label" for="tile-api-key">Tile API Key</label>
               <input
-                id="zoom-slider"
-                type="range"
-                min="3"
-                max="19"
-                class="form-range"
-                data-config-key="default_zoom"
-                .value=${this._config.default_zoom || 16}
+                id="tile-api-key"
+                type="text"
+                class="form-input"
+                placeholder="Enter Carto/custom tile API key"
+                data-config-key="tile_api_key"
+                .value=${this._config.tile_api_key || this._config.api_key || ""}
                 @input=${this._valueChanged}
               />
+              <div style="font-size: 11px; color: var(--secondary-text-color); margin-top: 4px;">
+                For Carto tiles with API key restrictions, add your key. Also works as <code>api_key</code>.
+              </div>
             </div>
           </div>
 
@@ -6585,8 +6587,16 @@ var J = class extends He {
 			url: this._config.tile_url,
 			attribution: this._config.tile_attribution || ""
 		} : ft[e] || ft.osm;
-		let n = `${e}-${t.url}`;
-		this._tileLayer && this._currentTileKey === n || (this._tileLayer && this._map.removeLayer(this._tileLayer), this._tileLayer = B.tileLayer(t.url, {
+		let n = this._config.tile_api_key || this._config.api_key;
+		n && t.url && (t.url.includes("{apikey}") || t.url.includes("{key}") ? t = {
+			...t,
+			url: t.url.replace("{apikey}", n).replace("{key}", n)
+		} : e !== "carto_light" && e !== "carto_dark" && e !== "auto" || !t.url.includes("cartocdn.com") || t.url.includes("api_key=") || t.url.includes("access_token=") || (t = {
+			...t,
+			url: t.url.includes("?") ? `${t.url}&api_key=${encodeURIComponent(n)}` : `${t.url}?api_key=${encodeURIComponent(n)}`
+		}));
+		let r = `${e}-${t.url}`;
+		this._tileLayer && this._currentTileKey === r || (this._tileLayer && this._map.removeLayer(this._tileLayer), this._tileLayer = B.tileLayer(t.url, {
 			attribution: t.attribution,
 			subdomains: t.subdomains || [
 				"a",
@@ -6595,7 +6605,7 @@ var J = class extends He {
 				"d"
 			],
 			maxZoom: t.maxZoom || 19
-		}).addTo(this._map), this._currentTileKey = n);
+		}).addTo(this._map), this._currentTileKey = r);
 	}
 	_updateVehicleFromHass() {
 		let e = W(this.hass, this._config, this._previousPos);

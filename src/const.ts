@@ -23,6 +23,8 @@ export const DEFAULT_CONFIG: Partial<MapBearingCardConfig> = {
   show_accuracy: true,
   map_provider: 'auto',
   dark_mode: 'auto',
+  tile_api_key: '',
+  api_key: '',
   default_zoom: 16,
   min_zoom: 3,
   max_zoom: 19,

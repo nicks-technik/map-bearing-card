@@ -346,19 +346,19 @@ export class MapBearingCardEditor extends LitElement {
             </div>
 
             <div class="form-row">
-              <label class="form-label" for="zoom-slider">
-                Default Zoom: <strong>${this._config.default_zoom || 16}</strong>
-              </label>
+              <label class="form-label" for="tile-api-key">Tile API Key</label>
               <input
-                id="zoom-slider"
-                type="range"
-                min="3"
-                max="19"
-                class="form-range"
-                data-config-key="default_zoom"
-                .value=${this._config.default_zoom || 16}
+                id="tile-api-key"
+                type="text"
+                class="form-input"
+                placeholder="Enter Carto/custom tile API key"
+                data-config-key="tile_api_key"
+                .value=${this._config.tile_api_key || this._config.api_key || ''}
                 @input=${this._valueChanged}
               />
+              <div style="font-size: 11px; color: var(--secondary-text-color); margin-top: 4px;">
+                For Carto tiles with API key restrictions, add your key. Also works as <code>api_key</code>.
+              </div>
             </div>
           </div>
 

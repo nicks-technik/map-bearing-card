@@ -78,6 +78,8 @@ export interface MapBearingCardConfig {
   dark_mode?: 'auto' | boolean;
   tile_url?: string;
   tile_attribution?: string;
+  tile_api_key?: string;
+  api_key?: string;
   default_zoom?: number;
   min_zoom?: number;
   max_zoom?: number;

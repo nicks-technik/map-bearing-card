@@ -234,6 +234,25 @@ export class MapBearingCard extends LitElement {
       tileDef = TILE_LAYERS[provider] || TILE_LAYERS.osm;
     }
 
+    // Inject API key if provided
+    const apiKey = this._config.tile_api_key || this._config.api_key;
+    if (apiKey && tileDef.url) {
+      if (tileDef.url.includes('{apikey}') || tileDef.url.includes('{key}')) {
+        tileDef = {
+          ...tileDef,
+          url: tileDef.url.replace('{apikey}', apiKey).replace('{key}', apiKey),
+        };
+      } else if ((provider === 'carto_light' || provider === 'carto_dark' || provider === 'auto') && tileDef.url.includes('cartocdn.com')) {
+        // Carto may require API key in some setups; append as query param if needed
+        if (!tileDef.url.includes('api_key=') && !tileDef.url.includes('access_token=')) {
+          tileDef = {
+            ...tileDef,
+            url: tileDef.url.includes('?') ? `${tileDef.url}&api_key=${encodeURIComponent(apiKey)}` : `${tileDef.url}?api_key=${encodeURIComponent(apiKey)}`,
+          };
+        }
+      }
+    }
+
     const tileKey = `${provider}-${tileDef.url}`;
     if (this._tileLayer && this._currentTileKey === tileKey) {
       return;
